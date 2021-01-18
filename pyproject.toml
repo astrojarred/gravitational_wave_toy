@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "gw_toy"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.7.9"
+scipy = "^1.6.0"
+numpy = "^1.19.5"
+matplotlib = "^3.3.3"
+astropy = "^4.2"
+pandas = "^1.2.0"
+
+[tool.poetry.dev-dependencies]
+ipython = "^7.19.0"
+ipykernel = "^5.4.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
