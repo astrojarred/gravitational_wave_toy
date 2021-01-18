@@ -139,3 +139,12 @@ cython_debug/
 
 # custom files
 GammaCatalogV1.0/
+*.icloud
+*.DS_Store
+grbsens*.txt
+grbsens*.zip
+ObsTimes/
+BNS*.txt
+ObservingTimes*.py
+ObsTimes*/
+gwUti*.py
