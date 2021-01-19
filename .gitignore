@@ -140,6 +140,7 @@ cython_debug/
 # custom files
 GammaCatalogV1.0/
 *.icloud
+.vscode/
 *.DS_Store
 grbsens*.txt
 grbsens*.zip
