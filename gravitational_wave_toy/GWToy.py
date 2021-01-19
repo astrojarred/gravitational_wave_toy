@@ -15,6 +15,8 @@ from astropy.io import fits
 
 import random
 
+import subprocess
+
 from scipy.interpolate import interp1d
 from scipy import integrate
 
@@ -23,6 +25,15 @@ import numpy as np
 import pandas as pd
 
 # definitions
+
+
+def run_bash(command: str, show: bool = False):
+    split_command = command.split(" ")
+    output = subprocess.Popen(split_command, stdout=subprocess.PIPE).communicate()
+    if show:
+        print(output[0].decode("utf-8"))
+    else:
+        return output[0].decode("utf-8")
 
 
 def ParseGrbsens(catFileName, Separator="\t", names=None, orient="list"):
@@ -83,7 +94,7 @@ def get_energy_limits(zenith: int):
     return lower, upper
 
 
-def bns_stats(df=None, input_file=None):
+def bns_stats(df: pd.DataFrame = None, input_file: str = None):
     """Print statistics about the data runs"""
 
     if df is None and input_file is None:
@@ -97,6 +108,45 @@ def bns_stats(df=None, input_file=None):
 
         for data in [df_20, df_40, df_60]:
             print("")
+
+
+def find_files(catalog_directory: str, ext: str = "fits"):
+    fits_files = [
+        os.path.abspath(f"{catalog_directory}/{f}")
+        for f in os.listdir(os.path.abspath(catalog_directory))
+        if f.endswith(f".{ext}")
+    ]
+    return fits_files
+
+
+def open_v1_fits(filepath: str):
+    try:
+        
+        grb = {}
+
+        with fits.open(filepath) as hdu_list:
+
+            grb["run"] = hdu_list[0].header["RUN"]
+            grb["id"] = hdu_list[0].header["MERGERID"]
+            grb["ra"] = hdu_list[0].header["RA"]
+            grb["dec"] = hdu_list[0].header["DEC"]
+            grb["eiso"] = hdu_list[0].header["EISO"]
+            grb["z"] = hdu_list[0].header["REDSHIFT"]
+            grb["ange"] = hdu_list[0].header["ANGLE"]
+
+            datalc = hdu_list[3].data
+            datatime = hdu_list[2].data
+            dataenergy = hdu_list[1].data
+
+            grb["lc"] = datalc.field(0)
+            grb["time"] = datatime.field(0)
+            grb["energy"] = dataenergy.field(0)
+            grb["spec"] = datalc[0]
+
+            return grb
+
+    except FileNotFoundError:
+        print(f"Input V1 GRB {filepath} not found.")
 
 
 #######################################################
