@@ -145,6 +145,8 @@ grbsens*.txt
 grbsens*.zip
 ObsTimes/
 BNS*.txt
+BNS*.gz
+BNS*.zip
 ObservingTimes*.py
 ObsTimes*/
 gwUti*.py
