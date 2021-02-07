@@ -148,7 +148,87 @@ def open_v1_fits(filepath: str):
     except FileNotFoundError:
         print(f"Input V1 GRB {filepath} not found.")
 
+# Spectrum
+def spectrum(x):
+    return (x / 1) ** (-2.1)
 
+def observe_grb(bns_index: int, bns_dict: dict, interpolations, inttime: float, tstart: float = 0, observatory=None):
+
+    # get run and merger ID
+
+    run = bns[bns_index]["run"]
+    merger_id = bns[bns_index]["MergerID"]
+    if "merger" in merger_id.lower():
+        merger_id = merger_id[6:]
+
+    
+
+    info = {
+        "run": bns[bns_index]["run"],
+        "MergerID": merger_id,
+        "zenith": bns[bns_index]["Mean Altitude"],
+        "observatory": bns[bns_index]["Observatory"],
+        "tstart": 0,
+        "tend": 0,
+        "obstime": 0,
+        "seen": False,
+    }
+
+    InputGRB = f"GammaCatalogV1.0/{run}_{merger_id}.fits"
+
+    # open grb file
+    grb = open_v1_fits(InputGRB)
+
+    # add other bns information:
+    #    - later these can be replaces with functions to calculate them
+    grb["zenith"] = bns[bns_index]["Mean Altitude"]
+    grb["observatory"] = bns[bns_index]["Observatory"]
+    if observatory:
+        # force observatory if given as input
+        grb["observatory"] = observatory.lower().capitalize()
+
+    # set the grb to not be seen by default
+    grb["seen"] = False
+
+    # Integral of the spectrum
+
+    lower, upper = get_energy_limits(grb['zenith'])
+
+    intl, errl = integrate.quad(lambda x: spectrum(x), lower, upper)  # GeV
+
+    # Interpolation of the flux with time
+    flux = interp1d(grb["time"], grb["lc"])
+
+    # start the procedure
+    dt = 1
+    grb["tstart"] = tstart
+
+    for m in range(1, inttime):  # second loop from 1 to max integration time
+
+            t = tstart + m * dt  # tstart = 210, + loop number
+            obst = t - tstart  # how much actual observing time has gone by
+
+            fluencen, errorn = integrate.quad(lambda x: flux(x), tstart, t)
+            averagefluxn = fluencen * intl / obst  # ph/cm2/s
+
+            photon_flux = interpolate_grbsens(obst, grb["observatory"], grb["zenith"], interpolations)
+
+            if averagefluxn > photon_flux:  # if it is visible:
+
+                if tstart + obst < inttime:  # if starting time < max time, write
+                    tend = tstart + obst
+                    grb["tend"] = tend
+                    grb["obstime"] = obst
+                    grb["seen"] = True
+
+                tstart = tstart + obst
+
+                break
+
+    # print(f"Seen: {new_row['seen']}")
+    return grb
+
+    
 #######################################################
 
 # Get Script name
@@ -324,9 +404,8 @@ if __name__ == "__main__":
         spec = datalc[0]
         #    Norm=spec[0]
 
-        # Spectrum
-        def spectrum(x):
-            return (x / 1) ** (-2.1)
+        # open grb file
+        grb = open_v1_fits(InputGRB)
 
         # Integral of the spectrum
 
@@ -335,7 +414,7 @@ if __name__ == "__main__":
         intl, errl = integrate.quad(lambda x: spectrum(x), lower, upper)  # GeV
 
         # Interpolation of the flux with time
-        flux = interp1d(time, lc)
+        flux = interp1d(grb["time"], grb["lc"])
 
         #################################################
         # Starting the procedure
