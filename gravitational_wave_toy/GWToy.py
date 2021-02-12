@@ -350,35 +350,19 @@ def observe_grb(bns_index: int, bns_dict: dict, fit_dict: dict, integral_dict: d
 
 if __name__ == "__main__":
 
-    usg = "\033[1;31m%prog [ options] inputFile\033[1;m \n"
+    # load in the settings
+    with open("./gw_settings.yaml") as file:
+        parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
-    desc = "\033[34mThis is a sample script\033[0m \n"
-
-    parser = OptionParser(description=desc, usage=usg)
-
-    parser.add_option(
-        "-i",
-        "--InputBNS",
-        default="BNS-GW-Time_onAxis5deg-final.txt",
-        help="File with the BNS mergers",
-    )
-    parser.add_option(
-        "-d", "--deltat", type="float", default=1.0, help="time bin width (s)"
-    )
-    parser.add_option(
-        "-t", "--inttime", type="int", default=10210, help="maximum integration time"
-    )
-
-    parser.add_option(
-        "-l", "--lowerenergy", type=float, default=20, help="lower energy limit (GeV)"
-    )
-    parser.add_option(
-        "-m",
-        "--higherenergy",
-        type=float,
-        default=10000,
-        help="higher energy limit (GeV)",
-    )
+    n_cores = parsed_yaml_file["ncores"]
+    files = parsed_yaml_file["grbsens_files"]
+    bns_dict = ParseBNS(parsed_yaml_file["bns_file"])
+    first_index = parsed_yaml_file["first_index"]
+    last_index = parsed_yaml_file["last_index"]
+    n_mergers = len(bns_dict)
+    output_filename = parsed_yaml_file["output_filename"]
+    zeniths = parsed_yaml_file["zeniths"]
+    time_delays = parsed_yaml_file["time_delays"]
 
     parser.add_option("-u", "--initialN", type=int, default=0, help="initial BNS")
     parser.add_option("-v", "--finalN", type=int, default=1, help="final BNS")
@@ -523,8 +507,10 @@ if __name__ == "__main__":
 
         intl, errl = integrate.quad(lambda x: spectrum(x), lower, upper)  # GeV
 
-        # Interpolation of the flux with time
-        flux = interp1d(grb["time"], grb["lc"])
+    # run the observations
+    grb_dfs = []
+    for obj_id in grb_object_ids:
+        grb_dfs.append(ray.get(obj_id))
 
         #################################################
         # Starting the procedure
