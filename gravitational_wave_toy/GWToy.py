@@ -332,7 +332,7 @@ def observe_grb(bns_index: int, bns_dict: dict, fit_dict: dict, integral_dict: d
                 grb["obstime"] = obst
                 grb["seen"] = True
 
-                tstart = tstart + obst
+                # print(f"\n\nSeen! Obs time: {obst}, End time: {tend}")
 
                 break
 
