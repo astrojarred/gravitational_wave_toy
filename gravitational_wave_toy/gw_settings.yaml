@@ -1,0 +1,42 @@
+# An example YAML settings file
+
+# number of cores to use in parallel
+ncores: 52
+
+output_filename: gw_toy_results.csv
+
+zeniths:
+  - 20
+  - 40
+  - 60
+
+grbsens_files:
+  north:
+    20: grbsens-5.0sigma_t1s-t16384s_irf-North_z20_0.5h.txt
+    40: grbsens-5.0sigma_t1s-t16384s_irf-North_z40_0.5h.txt
+    60: grbsens-5.0sigma_t1s-t16384s_irf-North_z60_0.5h.txt
+  south:
+    20: grbsens-5.0sigma_t1s-t16384s_irf-South_z20_0.5h.txt
+    40: grbsens-5.0sigma_t1s-t16384s_irf-South_z40_0.5h.txt
+    60: grbsens-5.0sigma_t1s-t16384s_irf-South_z60_0.5h.txt
+
+bns_file: "/astri01/data1/gershon/gw_toy/gw_toy/BNS-GW-Time_onAxis5deg-original.txt"
+first_index: null
+last_index: null
+
+time_delays: # in seconds
+  - 1
+  - 10
+  - 30
+  - 60
+  - 90
+  - 120       # 2m
+  - 300       # 5m
+  - 600       # 10m
+  - 3600      # 1h
+  - 7200      # 2h
+  - 14400     # 4h
+  - 28800     # 8h
+  - 43200     # 12h
+  - 64800     # 18h
+  - 86400     # 24h
