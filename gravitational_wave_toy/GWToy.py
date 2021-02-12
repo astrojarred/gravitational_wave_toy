@@ -364,207 +364,43 @@ if __name__ == "__main__":
     zeniths = parsed_yaml_file["zeniths"]
     time_delays = parsed_yaml_file["time_delays"]
 
-    parser.add_option("-u", "--initialN", type=int, default=0, help="initial BNS")
-    parser.add_option("-v", "--finalN", type=int, default=1, help="final BNS")
+    if not first_index:
+        first_index = 0
+    if not last_index:
+        last_index = n_mergers
 
-    (options, args) = parser.parse_args()
-    if len(args) != 0:
-        parser.error("incorrect number of arguments. Use -h for help")
+    # generate look-up dictionary of fits of the sensitivities
+    fit_dict = get_fit_dict(files)
 
-    InputData = options.InputBNS
-    dt = options.deltat
-    inttime = options.inttime
-    x1 = options.lowerenergy
-    x2 = options.higherenergy
+    # generate integrated spectrum dict
+    spectral_dict = get_integral_spectra(zeniths=zeniths)
 
-    ini = options.initialN
-    fin = options.finalN
+    # initialize ray and create remote solver
+    ray.init(num_cpus=n_cores)
+    observe_grb_remote = ray.remote(observe_grb)
 
-    #####################################################
+    total_runs = n_mergers * len(zeniths) * len(time_delays)
 
-    print("************************************")
-    print("** " + ScriptName)
-    print("************************************")
-
-    print("** Options:")
-
-    # List parameters and args
-    print("\n**Input parameters:")
-    for key, val in parser.values.__dict__.items():
-        print(key, ":", val)
-        if val is None:
-            print(
-                "\nERROR!",
-                key,
-                "is a required option! Exit.\nType ",
-                ScriptName + ".py -h for help\n",
-            )
-            sys.exit(1)
-
-    #######################################################################
-
-    #########################################
-    # Creating the output directories with the obs time
-    os.system("mkdir -p ObsTimes_toy")
-    #########################################
-
-    #########################################
-    # Create the 1D interpolation classes
-    files = {
-        "north": {
-            20: "grbsens-5.0sigma_t1s-t16384s_irf-North_z20_0.5h.txt",
-            40: "grbsens-5.0sigma_t1s-t16384s_irf-North_z40_0.5h.txt",
-            60: "grbsens-5.0sigma_t1s-t16384s_irf-North_z60_0.5h.txt",
-        },
-        "south": {
-            20: "grbsens-5.0sigma_t1s-t16384s_irf-South_z20_0.5h.txt",
-            40: "grbsens-5.0sigma_t1s-t16384s_irf-South_z40_0.5h.txt",
-            60: "grbsens-5.0sigma_t1s-t16384s_irf-South_z60_0.5h.txt",
-        },
-    }
-
-    interpolations = get_interpolation_dict(files)
-
-    # Reading the file with the selection of BNS mergers
-
-    bns = ParseBNS(InputData)
-
-    # create output file
-    outfile = f"ObsTimes_toy/obstime.csv"
-
-    output_cols = [
-        "run",
-        "MergerID",
-        "alt",
-        "observatory",
-        "tstart",
-        "tend",
-        "obstime",
-        "seen",
+    # set up each observation
+    grb_object_ids = [
+        observe_grb_remote.remote(bns_index, bns_dict, fit_dict, spectral_dict, tstart=delay, zenith=z)
+        for bns_index in range(0, n_mergers)
+        for z in zeniths
+        for delay in time_delays
     ]
-    output = pd.DataFrame(columns=output_cols)
 
-    for j in range(ini, fin):
-
-        run = bns[j]["run"]
-        merger_id = bns[j]["MergerID"]
-        zenith = bns[j]["Mean Altitude"]
-        site = bns[j]["Observatory"]
-
-        if "merger" in merger_id.lower():
-            merger_id = merger_id[6:]
-
-        new_row = {
-            "run": run,
-            "MergerID": merger_id,
-            "alt": zenith,
-            "observatory": site,
-            "tstart": 0,
-            "tend": 0,
-            "obstime": 0,
-            "seen": False,
-        }
-
-        #######################################################
-        # Defining which sensitivity to use
-        #######################################################
-
-        ####### -> -> ->
-        ####### Here we have the new fs function, and I added the case zenith=60 deg
-
-        print(f"#{j}| BNS: {merger_id}, Cite: {site}, Zentih: {zenith}, ", end="")
-
-        #######################################################
-        # Associating a GRB to the BNS mergers
-        #######################################################
-
-        InputGRB = f"GammaCatalogV1.0/{run}_{merger_id}.fits"
-
-        try:
-            hdu_list = fits.open(InputGRB)
-            # print(f"Found file {InputGRB}")
-            #    hdu_list.info()
-        except FileNotFoundError:
-            print(f"Input GRB {InputGRB} not found.")
-            continue
-
-        datalc = hdu_list[3].data
-        datatime = hdu_list[2].data
-        dataenergy = hdu_list[1].data
-
-        lc = datalc.field(0)
-        time = datatime.field(0)
-        energy = dataenergy.field(0)
-        spec = datalc[0]
-        #    Norm=spec[0]
-
-        # open grb file
-        grb = open_v1_fits(InputGRB)
-
-        # Integral of the spectrum
-
-        lower, upper = get_energy_limits(zenith)
-
-        intl, errl = integrate.quad(lambda x: spectrum(x), lower, upper)  # GeV
+    for _ in tqdm(_to_iterator(grb_object_ids), total=total_runs):
+        pass
 
     # run the observations
     grb_dfs = []
     for obj_id in grb_object_ids:
         grb_dfs.append(ray.get(obj_id))
 
-        #################################################
-        # Starting the procedure
-        #################################################
+    # create the final pandas dataframe and write to a csv
+    final_table = pd.concat(grb_dfs)
+    final_table.to_csv(output_filename)
 
-        # defining the starting time of observation
+    ray.shutdown()
 
-        tslew = 30  # pointing time (s)
-        # talert = 180  # latency for the GW alert (s)
-        # get random starting delay
-        talert = random.randint(120, 600)  # between 2 and 10 mins
-
-        tstart = talert + tslew  # (s)
-        print(f"Delay: {tstart}, ", end="")
-
-        dt = 1
-
-        new_row["tstart"] = tstart
-
-        # loop over first pointint only
-        # for n in range(1, inttime):  # loop from 1 to max integration time
-
-        for m in range(1, inttime):  # second loop from 1 to max integration time
-
-            t = tstart + m * dt  # tstart = 210, + loop number
-            obst = t - tstart  # how much actual observing time has gone by
-
-            fluencen, errorn = integrate.quad(lambda x: flux(x), tstart, t)
-            averagefluxn = fluencen * intl / obst  # ph/cm2/s
-
-            photon_flux = interpolate_grbsens(obst, site, zenith, interpolations)
-
-            if averagefluxn > photon_flux:  # if it is visible:
-
-                if tstart + obst < inttime:  # if starting time < max time, write
-                    tend = tstart + obst
-                    new_row["tend"] = tend
-                    new_row["obstime"] = obst
-                    new_row["seen"] = True
-
-                tstart = tstart + obst
-
-                break
-
-        print(f"Seen: {new_row['seen']}")
-        output = output.append(new_row, ignore_index=True)
-
-        # if tstart >= inttime:
-        #     break
-
-    # print and save final results
-    print("\nFinal results:")
-    with pd.option_context("display.max_rows", None, "display.max_columns", None):
-        print(output)
-
-    print(f"\nSaving file to {outfile}")
-    output.to_csv(outfile, sep="\t", index=False)
+    print("All done!")
