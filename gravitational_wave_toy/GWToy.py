@@ -419,7 +419,11 @@ if __name__ == "__main__":
 
     # create the final pandas dataframe and write to a csv
     final_table = pd.concat(grb_dfs)
-    final_table.to_csv(output_filename)
+    final_table.to_csv(output_filename, index=False)
+    print(f"Saved csv: {output_filename}")
+    pickle_filename = output_filename.split(".")[0] + ".pkl"
+    final_table.to_pickle(pickle_filename)
+    print(f"Saved pandas dataframe: {pickle_filename}")
 
     ray.shutdown()
 
