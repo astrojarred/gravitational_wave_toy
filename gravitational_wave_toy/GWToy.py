@@ -346,8 +346,11 @@ def observe_grb(bns_index: int, bns_dict: dict, fit_dict: dict, integral_dict: d
 
 if __name__ == "__main__":
 
+    print("Welcome to GWToy for CTA, for use with catalogue v1.")
+
     # load in the settings
     with open("./gw_settings.yaml") as file:
+        print("Settings file found!")
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
     n_cores = parsed_yaml_file["ncores"]
@@ -366,6 +369,14 @@ if __name__ == "__main__":
     if not last_index:
         last_index = n_mergers
 
+    print(f"Settings:\n"
+          f"  - {n_cores} cores\n"
+          f"  - output filename: {output_filename}\n"
+          f"  - zenith angles: {zeniths}\n"
+          f"  - time delays (s): {time_delays}\n"
+          f"  - decimal precision: {precision}\n"
+          f"  - # mergers to analyze: {len(range(first_index, last_index))}\n")
+
     # generate look-up dictionary of fits of the sensitivities
     fit_dict = get_fit_dict(files)
 
@@ -373,11 +384,13 @@ if __name__ == "__main__":
     spectral_dict = get_integral_spectra(zeniths=zeniths)
 
     # initialize ray and create remote solver
+    print("Starting ray:")
     ray.init(num_cpus=n_cores)
     observe_grb_remote = ray.remote(observe_grb)
 
     total_runs = len(range(first_index, last_index)) * len(zeniths) * len(time_delays)
 
+    print(f"Running {total_runs} observations")
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
@@ -401,6 +414,8 @@ if __name__ == "__main__":
     grb_dfs = []
     for obj_id in grb_object_ids:
         grb_dfs.append(ray.get(obj_id))
+
+    print("Done observing!\nCreating file output.")
 
     # create the final pandas dataframe and write to a csv
     final_table = pd.concat(grb_dfs)
