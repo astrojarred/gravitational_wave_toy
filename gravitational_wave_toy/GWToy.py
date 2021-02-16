@@ -312,24 +312,23 @@ def observe_grb(bns_index: int, bns_dict: dict, fit_dict: dict, integral_dict: d
         if avg_flux > photon_flux:  # if it is visible:
             # print(f"\nClose solution, t={round(t, precision)}, avgflux={avg_flux}, photon_flux={photon_flux}")
 
-            if dt > 10 ** (-1 * precision):
+            if dt > (10 ** (-1 * precision)):
 
                 # if the desired precision is not reached, go deeper
                 # change scale of dt and go back a step
                 autostep = False
                 tstart = previous_t
                 dt = dt / 10
-                n = 1
+                n = 0
 
             else:
                 # desired prevision is reached! Give solution
 
-                tend = original_tstart + obst
-                grb["tend"] = tend
-                grb["obstime"] = obst
+                tend = original_tstart + round(obst, precision)
+                grb["tend"] = round(tend, precision)
+                grb["obstime"] = round(obst, precision)
                 grb["seen"] = True
-
-                # print(f"\n\nSeen! Obs time: {obst}, End time: {tend}")
+                # print(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
 
                 break
 
@@ -360,6 +359,7 @@ if __name__ == "__main__":
     output_filename = parsed_yaml_file["output_filename"]
     zeniths = parsed_yaml_file["zeniths"]
     time_delays = parsed_yaml_file["time_delays"]
+    precision = parsed_yaml_file["precision"]
 
     if not first_index:
         first_index = 0
@@ -376,14 +376,22 @@ if __name__ == "__main__":
     ray.init(num_cpus=n_cores)
     observe_grb_remote = ray.remote(observe_grb)
 
-    total_runs = n_mergers * len(zeniths) * len(time_delays)
+    total_runs = len(range(first_index, last_index)) * len(zeniths) * len(time_delays)
 
     # set up each observation
     grb_object_ids = [
-        observe_grb_remote.remote(bns_index, bns_dict, fit_dict, spectral_dict, tstart=delay, zenith=z)
-        for bns_index in range(0, n_mergers)
+        observe_grb_remote.remote(
+            bns_index,
+            bns_dict,
+            fit_dict,
+            spectral_dict,
+            tstart=delay,
+            zenith=z,
+            precision=precision,
+        )
+        for bns_index in range(first_index, last_index)
         for z in zeniths
-        for delay in time_delays
+        for delay in sorted(time_delays, reverse=True)
     ]
 
     for _ in tqdm(_to_iterator(grb_object_ids), total=total_runs):
