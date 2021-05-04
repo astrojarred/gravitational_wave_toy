@@ -77,7 +77,7 @@ def get_interpolation_dict(file_dict: dict):
     return file_dict
 
 
-def interpolate_grbsens(x: float, direction: str, zenith: int, interpoations: dict):
+def interpolate_grbsens(x: float, direction: str, zenith: int, interpolations: dict):
 
     try:
         return interpolations[direction.lower()][zenith](x)
@@ -88,7 +88,9 @@ def interpolate_grbsens(x: float, direction: str, zenith: int, interpoations: di
 def fit_grbsens(filepath: str):
     grbsens = open_grbsens(filepath)
 
-    result = scipy.stats.linregress(np.log10(grbsens["obs_time"]), np.log10(grbsens["photon_flux"]))
+    result = scipy.stats.linregress(
+        np.log10(grbsens["obs_time"]), np.log10(grbsens["photon_flux"])
+    )
 
     return result
 
@@ -227,8 +229,17 @@ def _to_iterator(obj_ids):
             yield 1
 
 
-def observe_grb(bns_index: int, bns_dict: dict, fit_dict: dict, integral_dict: dict, tstart: float = 0,
-                     max_time=None, precision=1, observatory=None, zenith=None):
+def observe_grb(
+    bns_index: int,
+    bns_dict: dict,
+    fit_dict: dict,
+    integral_dict: dict,
+    tstart: float = 0,
+    max_time=None,
+    precision=1,
+    observatory=None,
+    zenith=None,
+):
     """Modified version to increase timestep along with time size"""
 
     # get run and merger ID
@@ -369,13 +380,15 @@ if __name__ == "__main__":
     if not last_index:
         last_index = n_mergers
 
-    print(f"Settings:\n"
-          f"  - {n_cores} cores\n"
-          f"  - output filename: {output_filename}\n"
-          f"  - zenith angles: {zeniths}\n"
-          f"  - time delays (s): {time_delays}\n"
-          f"  - decimal precision: {precision}\n"
-          f"  - # mergers to analyze: {len(range(first_index, last_index))}\n")
+    print(
+        f"Settings:\n"
+        f"  - {n_cores} cores\n"
+        f"  - output filename: {output_filename}\n"
+        f"  - zenith angles: {zeniths}\n"
+        f"  - time delays (s): {time_delays}\n"
+        f"  - decimal precision: {precision}\n"
+        f"  - # mergers to analyze: {len(range(first_index, last_index))}\n"
+    )
 
     # generate look-up dictionary of fits of the sensitivities
     fit_dict = get_fit_dict(files)
