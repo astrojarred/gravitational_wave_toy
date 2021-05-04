@@ -2,7 +2,7 @@
 name = "gw_toy"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = ["Jarred Green <jarred.green@inaf.it>"]
 
 [tool.poetry.dependencies]
 python = "^3.7.9"
