@@ -198,6 +198,8 @@ def open_v1_fits(filepath: str):
 
 # Spectrum
 def spectrum(x):
+    # This is correct for on-axis GRBs, but not for off-axis
+    # TODO: we'll have to implement some changes as not all GRBs were modelled with the same spectrum
     return (x / 1) ** (-2.1)
 
 
