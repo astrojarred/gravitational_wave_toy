@@ -153,3 +153,5 @@ BNS*/
 ObservingTimes*.py
 ObsTimes*/
 gwUti*.py
+*.pkl
+*.png
