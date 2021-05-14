@@ -59,9 +59,16 @@ def analyze(input_data, site=None, zenith=None, obs_times=None):
             new = {}
             results[delay][obs_time] = {}
             current_data = data[data["tstart"] == delay]
-            results[delay][obs_time]["seen"] = len(current_data[(current_data["obstime"] <= obs_time ) & (current_data["obstime"] > 0)])
+            results[delay][obs_time]["seen"] = len(
+                current_data[
+                    (current_data["obstime"] <= obs_time)
+                    & (current_data["obstime"] > 0)
+                ]
+            )
             results[delay][obs_time]["total"] = len(current_data)
-            results[delay][obs_time]["percent"] = results[delay][obs_time]["seen"] / results[delay][obs_time]["total"]
+            results[delay][obs_time]["percent"] = (
+                results[delay][obs_time]["seen"] / results[delay][obs_time]["total"]
+            )
             new["delay"] = delay
             new["obs_time"] = obs_time
             new["seen"] = results[delay][obs_time]["seen"]
@@ -90,10 +97,12 @@ def plot_toy(data, output_dir, site=None, zenith=None, obs_times=None, filetype=
 
     df["percent"] = df["percent"] * 100
 
-    pivot = df.pivot("delay", "obs_time", "percent").astype(float)
+    pivot = df.pivot("obs_time", "delay", "percent").astype(float)
 
     f, ax = plt.subplots(figsize=(9, 9))
-    heatmap = sns.heatmap(pivot, annot=True, fmt=".0f", linewidths=.5, ax=ax, cmap="viridis")
+    heatmap = sns.heatmap(
+        pivot, annot=True, fmt=".0f", linewidths=0.5, ax=ax, cmap="viridis"
+    )
 
     if not site:
         site = "Both sites"
@@ -131,7 +140,7 @@ if __name__ == "__main__":
     data = open_gw_file(input_file)
     print(f"Successfully loaded input file: {input_file}")
 
-    n_plots = len(sites)*len(zeniths)
+    n_plots = len(sites) * len(zeniths)
 
     loading_bar = tqdm(total=n_plots)
 
