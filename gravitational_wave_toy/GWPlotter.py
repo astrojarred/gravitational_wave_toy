@@ -15,6 +15,7 @@ import os
 import numpy as np
 import pandas as pd
 
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -87,29 +88,66 @@ def convert_time(seconds: float):
     else:
         return f"{seconds / 3600:.1f}h"
 
-    return
 
-
-def plot_toy(data, output_dir, site=None, zenith=None, obs_times=None, filetype="png"):
+def plot_toy(
+    data,
+    output_dir,
+    annotate=True,
+    site=None,
+    zenith=None,
+    obs_times=None,
+    x_tick_labels=None,
+    y_tick_labels=None,
+    min_value=None,
+    max_value=None,
+    color_scheme="viridis",
+    filetype="png",
+):
     sns.set_theme()
 
+    if str(zenith).lower() == "all":
+        zenith = None
+    if site.lower() == "all":
+        site = None
+
     df = analyze(data, site=site, zenith=zenith, obs_times=obs_times)
+    df.rename(columns={"obs_time": "exposure time"}, inplace=True)
 
     df["percent"] = df["percent"] * 100
 
-    pivot = df.pivot("obs_time", "delay", "percent").astype(float)
+    pivot = df.pivot("delay", "exposure time", "percent").astype(float)
 
     f, ax = plt.subplots(figsize=(9, 9))
-    heatmap = sns.heatmap(
-        pivot,
-        annot=False,
-        linewidths=0,
-        ax=ax,
-        cmap="YlGnBu",
-        cbar_kws={"orientation": "horizontal"},
-        # xticklabels=[convert_time(t) for t in obs_times],
-        # yticklabels=[convert_time(t) for t in pivot.columns],
-    )
+
+    cbar_kws = {"label": "Percentage of GRBs detected"}
+
+    if annotate:
+        heatmap = sns.heatmap(
+            pivot,
+            annot=True,
+            fmt=".0f",
+            linewidths=0.5,
+            ax=ax,
+            cmap=color_scheme,
+            vmin=min_value,
+            vmax=max_value,
+            xticklabels=x_tick_labels,
+            yticklabels=y_tick_labels,
+            cbar_kws=cbar_kws,
+        )
+    else:
+        heatmap = sns.heatmap(
+            pivot,
+            annot=False,
+            ax=ax,
+            cmap=color_scheme,
+            vmin=min_value,
+            vmax=max_value,
+            xticklabels=x_tick_labels,
+            yticklabels=y_tick_labels,
+            cbar_kws=cbar_kws,
+            square=True,
+        )
 
     if not site:
         site = "Both sites"
@@ -121,14 +159,20 @@ def plot_toy(data, output_dir, site=None, zenith=None, obs_times=None, filetype=
     else:
         zenith = f"z{zenith}"
 
-    plt.title(f"GW/GRB Detectability for {site}, {zenith}")
+    plt.title(f"GRB Detectability for {site}, {zenith}")
 
     fig = heatmap.get_figure()
-    fig.savefig(f"{output_dir}/GW_{site}_{zenith}.{filetype}")
-    print(f"Saved plot {output_dir}/GW_{site}_{zenith}.{filetype}")
+    output_file = (
+        f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}.{filetype}"
+    )
+    fig.savefig(output_file)
+    # print(f"Saved plot {output_file}")
 
 
 if __name__ == "__main__":
+
+    # set matplotlib backend
+    matplotlib.use("Agg")
 
     # load in the settings
     with open("./plot_settings.yaml") as file:
@@ -140,6 +184,13 @@ if __name__ == "__main__":
     sites = parsed_yaml_file["sites"]
     zeniths = parsed_yaml_file["zeniths"]
     obs_times = parsed_yaml_file["observation_times"]
+    annotate = parsed_yaml_file["show_percents"]
+    log_scale = parsed_yaml_file["log_scale"]
+    color_scheme = parsed_yaml_file["color_scheme"]
+    x_tick_labels = parsed_yaml_file["x_tick_labels"]
+    y_tick_labels = parsed_yaml_file["y_tick_labels"]
+    min_value = parsed_yaml_file["min_value"]
+    max_value = parsed_yaml_file["max_value"]
 
     print(f"Making output directory {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
@@ -151,7 +202,24 @@ if __name__ == "__main__":
 
     loading_bar = tqdm(total=n_plots)
 
+    print("Min max", min_value, max_value)
+
     for site in sites:
         for zenith in zeniths:
-            plot_toy(data, output_dir, site=site, zenith=zenith, obs_times=obs_times)
+            loading_bar.set_description(
+                desc=f"Plotting zenith={zenith} and site={site}"
+            )
+            plot_toy(
+                data,
+                output_dir,
+                site=site,
+                zenith=zenith,
+                obs_times=obs_times,
+                min_value=min_value,
+                max_value=max_value,
+                x_tick_labels=x_tick_labels,
+                y_tick_labels=y_tick_labels,
+                color_scheme=color_scheme,
+                annotate=annotate,
+            )
             loading_bar.update(1)

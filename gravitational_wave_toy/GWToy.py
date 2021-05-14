@@ -77,14 +77,6 @@ def get_interpolation_dict(file_dict: dict):
     return file_dict
 
 
-def interpolate_grbsens(x: float, direction: str, zenith: int, interpolations: dict):
-
-    try:
-        return interpolations[direction.lower()][zenith](x)
-    except KeyError:
-        raise AttributeError(f"No {direction} z{zenith} file found!")
-
-
 def fit_grbsens(filepath: str):
     grbsens = open_grbsens(filepath)
 
