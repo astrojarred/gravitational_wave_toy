@@ -1,11 +1,11 @@
 # An example YAML settings file for plotting results from GWToy.py
 
 # the output file from GWToy.py, csv or pkl
-input_file: gw_toy_results_log.pkl
+input_file: gw_toy_results_log_v2.pkl
 
-output_directory: plots
+output_directory: plots_v2
 
-color_scheme: YlGnBu
+color_scheme: mako
 
 show_percents: False
 
@@ -23,7 +23,7 @@ zeniths:
   - 60
   - all
 
-x_tick_labels:
+y_tick_labels:
   - "10s"
   - ""
   - ""
@@ -75,7 +75,7 @@ x_tick_labels:
   - ""
   - "8h"
 
-y_tick_labels:
+x_tick_labels:
   - "10s"
   - ""
   - ""
