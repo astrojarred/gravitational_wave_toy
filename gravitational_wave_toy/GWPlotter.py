@@ -115,11 +115,11 @@ def plot_toy(
 
     df["percent"] = df["percent"] * 100
 
-    pivot = df.pivot("delay", "exposure time", "percent").astype(float)
+    pivot = df.pivot("exposure time", "delay", "percent").astype(float)
 
     f, ax = plt.subplots(figsize=(9, 9))
 
-    cbar_kws = {"label": "Percentage of GRBs detected"}
+    cbar_kws = {"label": "Percentage of GRBs detected", "orientation": "vertical"}
 
     if annotate:
         heatmap = sns.heatmap(
@@ -146,8 +146,9 @@ def plot_toy(
             xticklabels=x_tick_labels,
             yticklabels=y_tick_labels,
             cbar_kws=cbar_kws,
-            square=True,
         )
+
+    heatmap.invert_yaxis()
 
     if not site:
         site = "Both sites"
