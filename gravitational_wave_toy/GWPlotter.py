@@ -101,7 +101,14 @@ def plot_toy(data, output_dir, site=None, zenith=None, obs_times=None, filetype=
 
     f, ax = plt.subplots(figsize=(9, 9))
     heatmap = sns.heatmap(
-        pivot, annot=True, fmt=".0f", linewidths=0.5, ax=ax, cmap="viridis"
+        pivot,
+        annot=False,
+        linewidths=0,
+        ax=ax,
+        cmap="YlGnBu",
+        cbar_kws={"orientation": "horizontal"},
+        # xticklabels=[convert_time(t) for t in obs_times],
+        # yticklabels=[convert_time(t) for t in pivot.columns],
     )
 
     if not site:
