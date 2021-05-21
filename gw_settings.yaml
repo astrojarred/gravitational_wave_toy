@@ -3,12 +3,24 @@
 # number of cores to use in parallel
 ncores: 52
 
+catalog: "/Users/jarred/Documents/Projects/gravitational_wave_toy/GammaCatalogV2.0"
 output_filename: gw_toy_results_log.csv
+
+first_index: null  # set to null to ignore
+last_index: null   # set to null to ignore
+precision: 2  # number of decimal places to calculate for each observation time
+
+# seed to ranomly pick which zenith to use for each merger
+random_seed: 42
 
 zeniths:
   - 20
   - 40
   - 60
+
+sites:
+  - south
+  - north
 
 grbsens_files:
   north:
@@ -19,11 +31,6 @@ grbsens_files:
     20: grbsens-5.0sigma_t1s-t16384s_irf-South_z20_0.5h.txt
     40: grbsens-5.0sigma_t1s-t16384s_irf-South_z40_0.5h.txt
     60: grbsens-5.0sigma_t1s-t16384s_irf-South_z60_0.5h.txt
-
-bns_file: "/astri01/data1/gershon/gw_toy/gw_toy/BNS-GW-Time_onAxis5deg-original.txt"
-first_index: null  # set to null to ignore
-last_index: null   # set to null to ignore
-precision: 2  # number of decimal places to calculate for each observation time
 
 time_delays:  # in seconds
 # log scale from 10s to 24h (50 bins)
