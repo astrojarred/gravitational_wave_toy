@@ -276,73 +276,38 @@ def _to_iterator(obj_ids):
 
 
 def observe_grb(
-    bns_index: int,
-    bns_dict: dict,
+    grb_file_path,
     fit_dict: dict,
-    integral_dict: dict,
-    tstart: float = 0,
+    start_time: float = 0,
     max_time=None,
+    zeniths=[20, 40, 60],
+    sites=["south", "north"],
+    random_seed=1,
     precision=1,
-    observatory=None,
-    zenith=None,
 ):
     """Modified version to increase timestep along with time size"""
 
-    # get run and merger ID
+    # load GRB data
+    grb = GRB(grb_file_path, random_seed=random_seed, zeniths=zeniths, sites=sites)
 
-    run = bns_dict[bns_index]["run"]
-    merger_id = bns_dict[bns_index]["MergerID"]
-    if "merger" in merger_id.lower():
-        merger_id = merger_id[6:]
-
-    InputGRB = f"./GammaCatalogV1.0/{run}_{merger_id}.fits"
-
-    # open grb file
-    grb = open_v1_fits(InputGRB)
-
-    # add other bns information:
-    #    - later these can be replaces with functions to calculate them
-    grb["zenith"] = bns_dict[bns_index]["Mean Altitude"]
-    grb["observatory"] = bns_dict[bns_index]["Observatory"]
-    if observatory:
-        # force observatory if given as input
-        grb["observatory"] = observatory.lower()
-    if zenith:
-        # force zenith if given as input
-        grb["zenith"] = zenith
-
-    z = grb["zenith"]
-    site = grb["observatory"].lower()
-
-    # set the grb to not be seen by default
-    grb["seen"] = False
-    grb["tend"] = -1
-    grb["obstime"] = -1
-
-    # Integral of the spectra
-
-    integral_spectrum = integral_dict[z]["integral"]  # GeV
-
-    sens_slope = fit_dict[site][z].slope
-    sens_intercept = fit_dict[site][z].intercept
+    # from grbsens
+    sens_slope = fit_dict[grb.site][grb.zenith].slope
+    sens_intercept = fit_dict[grb.site][grb.zenith].intercept
 
     # set default max time
     if max_time is None:
-        max_time = 86400 + tstart  # 24h after starting observations
+        max_time = 86400 + start_time  # 24h after starting observations
     else:
-        max_time += tstart
+        max_time += start_time
 
     # start the procedure
     dt = 1
-    grb["tstart"] = tstart
-
-    # Interpolation of the flux with time
-    flux = interp1d(grb["time"], grb["lc"], fill_value="extrapolate")
+    grb.start_time = start_time
 
     n = 1  # keeps track of loops carried out at current scale
     previous_dt = -1
-    original_tstart = tstart
-    t = tstart + n
+    original_tstart = start_time
+    t = start_time + n
     previous_t = t
     autostep = True
 
@@ -355,11 +320,23 @@ def observe_grb(
             if dt != previous_dt:  # if changing scale, reset n
                 n = 1
 
-        t = tstart + n * dt  # tstart = 210, + loop number
+        t = start_time + n * dt  # tstart = 210, + loop number
         obst = t - original_tstart  # how much actual observing time has gone by
 
-        fluence = integrate.quad(flux, original_tstart, t)
-        avg_flux = fluence[0] * integral_spectrum / obst
+        # Interpolation of the flux with time
+        # calculate integral_spectrum for every temporal bin
+        # interpolate this change of spectral index as it varies in time
+        flux = interp1d(
+            grb["time"], grb["lc"], fill_value="extrapolate"
+        )  # -> intepolation in time
+        integral_spectrum = integrate.simps(
+            spectrum(E, spectral_index(t)), E_min, E_max
+        )  # x -> energy (is it log or not?), interpolation in time
+        # fluence_2 -> fluence integrated in energy
+        fluence_2 = integrate.simps(flux(t) * integral_spectrum(t), original_tstart, t)
+        # fluence = integrate.quad(flux, original_tstart, t)
+        # avg_flux = fluence[0] * integral_spectrum / obst
+        avg_flux_2 = fluence_2 / obst
 
         # calculate photon flux
         photon_flux = fit_compact(obst, sens_slope, sens_intercept)
@@ -374,7 +351,7 @@ def observe_grb(
                 # if the desired precision is not reached, go deeper
                 # change scale of dt and go back a step
                 autostep = False
-                tstart = previous_t
+                start_time = previous_t
                 dt = dt / 10
                 n = 0
 
@@ -382,9 +359,9 @@ def observe_grb(
                 # desired prevision is reached! Give solution
 
                 tend = original_tstart + round(obst, precision)
-                grb["tend"] = round(tend, precision)
-                grb["obstime"] = round(obst, precision)
-                grb["seen"] = True
+                grb.end_time = round(tend, precision)
+                grb.obs_time = round(obst, precision)
+                grb.seen = True
                 # print(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
 
                 break
@@ -396,9 +373,7 @@ def observe_grb(
             previous_t = t
             n = n + 0.1
 
-    # print(f"Seen: {new_row['seen']}")
-    del grb["lc"], grb["time"], grb["energy"], grb["spec"]
-    return pd.DataFrame(grb, index=[bns_index])
+    return pd.DataFrame(grb.output(), index=f"{grb.id}_{grb.run}")
 
 
 if __name__ == "__main__":
@@ -410,21 +385,25 @@ if __name__ == "__main__":
         print("Settings file found!")
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
+    catalog_directory = parsed_yaml_file["catalog"]
+    file_list = glob.glob(catalog_directory)
+    n_grbs = parsed_yaml_file["grbs_to_analyze"]
+
     n_cores = parsed_yaml_file["ncores"]
     files = parsed_yaml_file["grbsens_files"]
-    bns_dict = ParseBNS(parsed_yaml_file["bns_file"])
     first_index = parsed_yaml_file["first_index"]
     last_index = parsed_yaml_file["last_index"]
-    n_mergers = len(bns_dict)
     output_filename = parsed_yaml_file["output_filename"]
     zeniths = parsed_yaml_file["zeniths"]
+    sites = parsed_yaml_file["sites"]
     time_delays = parsed_yaml_file["time_delays"]
     precision = parsed_yaml_file["precision"]
+    random_seed = parsed_yaml_file["random_seed"]
 
     if not first_index:
         first_index = 0
     if not last_index:
-        last_index = n_mergers
+        last_index = len(file_list)
 
     print(
         f"Settings:\n"
@@ -439,9 +418,6 @@ if __name__ == "__main__":
     # generate look-up dictionary of fits of the sensitivities
     fit_dict = get_fit_dict(files)
 
-    # generate integrated spectrum dict
-    spectral_dict = get_integral_spectra(zeniths=zeniths)
-
     # initialize ray and create remote solver
     print("Starting ray:")
     ray.init(num_cpus=n_cores)
@@ -453,16 +429,15 @@ if __name__ == "__main__":
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
-            bns_index,
-            bns_dict,
+            grb_file_path,
             fit_dict,
-            spectral_dict,
-            tstart=delay,
-            zenith=z,
+            start_time=delay,
+            zeniths=zeniths,
+            sites=sites,
+            random_seed=random_seed,
             precision=precision,
         )
-        for bns_index in range(first_index, last_index)
-        for z in zeniths
+        for grb_file_path in file_list[first_index:last_index]
         for delay in sorted(time_delays, reverse=True)
     ]
 
