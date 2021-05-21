@@ -216,34 +216,35 @@ class GRB:
         }
 
 
-            grb["run"] = hdu_list[0].header["RUN"]
-            grb["id"] = hdu_list[0].header["MERGERID"]
-            grb["ra"] = hdu_list[0].header["RA"]
-            grb["dec"] = hdu_list[0].header["DEC"]
-            grb["eiso"] = hdu_list[0].header["EISO"]
-            grb["z"] = hdu_list[0].header["REDSHIFT"]
-            grb["angle"] = hdu_list[0].header["ANGLE"]
-
-            datalc = hdu_list[3].data
-            datatime = hdu_list[2].data
-            dataenergy = hdu_list[1].data
-
-            grb["lc"] = datalc.field(0)
-            grb["time"] = datatime.field(0)
-            grb["energy"] = dataenergy.field(0)
-            grb["spec"] = datalc[0]
-
-            return grb
-
-    except FileNotFoundError:
-        print(f"Input V1 GRB {filepath} not found.")
-
-
 # Spectrum
-def spectrum(x):
+def spectrum(x, spectral_index=-2.1):
     # This is correct for on-axis GRBs, but not for off-axis
     # TODO: we'll have to implement some changes as not all GRBs were modelled with the same spectrum
-    return (x / 1) ** (-2.1)
+    return (x / 1) ** (spectral_index)
+
+
+def fit_spectral_index(grb: dict):
+
+    # get the starting times of each bin
+    times = np.array([i[0] for i in grb["lc"].data])
+    energies = np.array([i[0] for i in grb["energy"].data])
+
+    indices = []
+
+    for time_idx, time in enumerate(times):
+
+        spectrum = np.array(grb["lc"].data[time_idx])[0:-7]
+
+        m, b = np.polyfit(np.log10(energies), np.log10(spectrum), 1)
+
+        indices.append(m)
+
+    return indices
+
+
+def get_flux(grb: dict, t):
+
+    pass
 
 
 def get_integral_spectra(zeniths: list):
