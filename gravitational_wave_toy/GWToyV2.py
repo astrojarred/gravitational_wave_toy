@@ -143,33 +143,21 @@ def get_energy_limits(zenith: int):
     return lower, upper
 
 
-def bns_stats(df: pd.DataFrame = None, input_file: str = None):
-    """Print statistics about the data runs"""
-
-    if df is None and input_file is None:
-        raise AttributeError("Please proide either a dataframe or an input file.")
-
-    if df:
-        n_runs = len(df)
-        df_20 = df[df["alt"] == 20]
-        df_40 = df[df["alt"] == 40]
-        df_60 = df[df["alt"] == 60]
-
-        for data in [df_20, df_40, df_60]:
-            print("")
-
-
-def find_files(catalog_directory: str, ext: str = "fits"):
-    fits_files = [
-        os.path.abspath(f"{catalog_directory}/{f}")
-        for f in os.listdir(os.path.abspath(catalog_directory))
-        if f.endswith(f".{ext}")
-    ]
-    return fits_files
-
-
 class GRB:
-    def __init__(self, filepath: str):
+    def __init__(
+        self,
+        filepath: str,
+        random_seed=0,
+        zeniths=[20, 40, 60],
+        sites=["south", "north"],
+    ):
+
+        self.zenith = 0
+        self.site = "south"
+        self.seen = False
+        self.obs_time = -1
+        self.start_time = -1
+        self.end_time = -1
 
         with fits.open(filepath) as hdu_list:
 
@@ -185,19 +173,25 @@ class GRB:
             datatime = hdu_list[2].data
             dataenergy = hdu_list[1].data
 
-            self.lc = datalc
             self.time = datatime.field(0)
             self.energy = dataenergy.field(0)
             self.min_energy = min(self.energy)
             self.max_energy = max(self.energy)
-            self.spec = datalc[0]
 
             self.spectra = np.nan_to_num(
                 np.array([datalc.field(i) for i, e in enumerate(self.energy)])
             )
 
-            # get interpolation
-            self.spectrum = RectBivariateSpline(self.energy, self.time, self.spectra)
+        # get interpolation
+        self.spectrum = RectBivariateSpline(self.energy, self.time, self.spectra)
+
+        # set site and zenith
+        self.rng = np.random.default_rng(
+            int(self.id) * 10000 + int(self.run) + random_seed
+        )
+
+        self.site = self.rng.choice(sites)
+        self.zenith = self.rng.choice(zeniths)
 
     def get_spectrum(self, time, energy=None):
 
@@ -205,7 +199,7 @@ class GRB:
             energy = self.energy
 
         if hasattr(energy, "__len__"):
-            return [i[0] for i in (lambda e: self.spectrum(e, time))(energy)]
+            return np.array([i[0] for i in (lambda e: self.spectrum(e, time))(energy)])
         else:
             return (lambda e: self.spectrum(e, time))(energy)[0][0]
 
@@ -219,11 +213,15 @@ class GRB:
         else:
             return (lambda t: self.spectrum(energy, t))(time)[0][0]
 
-    try:
+    def output(self):
 
-        grb = {}
+        keys_to_drop = ["time", "energy", "spectra", "spectrum", "rng"]
+        return {
+            key: value
+            for key, value in self.__dict__.items()
+            if key not in keys_to_drop
+        }
 
-        with fits.open(filepath) as hdu_list:
 
             grb["run"] = hdu_list[0].header["RUN"]
             grb["id"] = hdu_list[0].header["MERGERID"]
