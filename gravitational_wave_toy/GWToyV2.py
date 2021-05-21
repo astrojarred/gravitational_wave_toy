@@ -53,13 +53,6 @@ def open_grbsens(filename: str):
     return sensi_list
 
 
-def ParseBNS(filename, sep=" ", names=None, orient="index"):
-    as_dict = pd.read_csv(
-        filename, sep=sep, quotechar='"', comment="#", names=names
-    ).to_dict(orient=orient)
-    return as_dict
-
-
 # open grbsens files and create interpolation class:
 def get_interpolation(filename: str):
     sensi_list = open_grbsens(filename)
