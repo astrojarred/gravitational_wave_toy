@@ -13,7 +13,7 @@ import os
 import subprocess
 import yaml
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, RectBivariateSpline
 from scipy import integrate
 import scipy.stats
 import scipy
@@ -166,7 +166,57 @@ def find_files(catalog_directory: str, ext: str = "fits"):
     return fits_files
 
 
-def open_v1_fits(filepath: str):
+class GRB:
+    def __init__(self, filepath: str):
+
+        with fits.open(filepath) as hdu_list:
+
+            self.run = hdu_list[0].header["RUN"]
+            self.id = hdu_list[0].header["MERGERID"]
+            self.ra = hdu_list[0].header["RA"]
+            self.dec = hdu_list[0].header["DEC"]
+            self.eiso = hdu_list[0].header["EISO"]
+            self.z = hdu_list[0].header["REDSHIFT"]
+            self.angle = hdu_list[0].header["ANGLE"]
+
+            datalc = hdu_list[3].data
+            datatime = hdu_list[2].data
+            dataenergy = hdu_list[1].data
+
+            self.lc = datalc
+            self.time = datatime.field(0)
+            self.energy = dataenergy.field(0)
+            self.min_energy = min(self.energy)
+            self.max_energy = max(self.energy)
+            self.spec = datalc[0]
+
+            self.spectra = np.nan_to_num(
+                np.array([datalc.field(i) for i, e in enumerate(self.energy)])
+            )
+
+            # get interpolation
+            self.spectrum = RectBivariateSpline(self.energy, self.time, self.spectra)
+
+    def get_spectrum(self, time, energy=None):
+
+        if not energy:
+            energy = self.energy
+
+        if hasattr(energy, "__len__"):
+            return [i[0] for i in (lambda e: self.spectrum(e, time))(energy)]
+        else:
+            return (lambda e: self.spectrum(e, time))(energy)[0][0]
+
+    def get_lightcurve(self, energy, time=None):
+
+        if not time:
+            time = self.time
+
+        if hasattr(time, "__len__"):
+            return (lambda t: self.spectrum(energy, t))(time)[0]
+        else:
+            return (lambda t: self.spectrum(energy, t))(time)[0][0]
+
     try:
 
         grb = {}
