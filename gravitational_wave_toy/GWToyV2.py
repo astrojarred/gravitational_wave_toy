@@ -386,7 +386,7 @@ def observe_grb(
             previous_t = t
             n = n + 0.1
 
-    return pd.DataFrame(grb.output(), index=f"{grb.id}_{grb.run}")
+    return pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
 
 
 if __name__ == "__main__":
