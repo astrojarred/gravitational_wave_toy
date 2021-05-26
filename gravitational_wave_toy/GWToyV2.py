@@ -206,6 +206,31 @@ class GRB:
         else:
             return (lambda t: self.spectrum(energy, t))(time)[0][0]
 
+    def get_integral_spectrum(self, time):
+
+        return integrate.quad(
+            lambda energy: self.get_spectrum(time, energy),
+            self.min_energy,
+            self.max_energy,
+        )[0]
+
+    def get_integral_flux(self, time):
+
+        return integrate.quad(
+            lambda energy: self.get_lightcurve(energy, time),
+            self.min_energy,
+            self.max_energy,
+        )[0]
+
+    def get_fluence(self, start_time, stop_time):
+
+        return integrate.quad(
+            lambda time: self.get_integral_flux(time)
+            * self.get_integral_spectrum(time),
+            start_time,
+            stop_time,
+        )[0]
+
     def output(self):
 
         keys_to_drop = ["time", "energy", "spectra", "spectrum", "rng"]
@@ -323,27 +348,15 @@ def observe_grb(
         t = start_time + n * dt  # tstart = 210, + loop number
         obst = t - original_tstart  # how much actual observing time has gone by
 
-        # Interpolation of the flux with time
-        # calculate integral_spectrum for every temporal bin
-        # interpolate this change of spectral index as it varies in time
-        flux = interp1d(
-            grb["time"], grb["lc"], fill_value="extrapolate"
-        )  # -> intepolation in time
-        integral_spectrum = integrate.simps(
-            spectrum(E, spectral_index(t)), E_min, E_max
-        )  # x -> energy (is it log or not?), interpolation in time
-        # fluence_2 -> fluence integrated in energy
-        fluence_2 = integrate.simps(flux(t) * integral_spectrum(t), original_tstart, t)
-        # fluence = integrate.quad(flux, original_tstart, t)
-        # avg_flux = fluence[0] * integral_spectrum / obst
-        avg_flux_2 = fluence_2 / obst
+        # Interpolation and integration of the flux with time
+        average_flux = grb.get_fluence(original_tstart, t)
 
         # calculate photon flux
         photon_flux = fit_compact(obst, sens_slope, sens_intercept)
 
         # print(f"t={t:.2f}, dt={dt}, avgflux={avg_flux}, photon_flux={photon_flux}")
 
-        if avg_flux > photon_flux:  # if it is visible:
+        if average_flux > photon_flux:  # if it is visible:
             # print(f"\nClose solution, t={round(t, precision)}, avgflux={avg_flux}, photon_flux={photon_flux}")
 
             if dt > (10 ** (-1 * precision)):
