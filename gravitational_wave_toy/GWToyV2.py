@@ -27,113 +27,69 @@ from astropy.io import fits
 import numpy as np
 import pandas as pd
 
-# definitions
+# classes
 
 
-def run_bash(command: str, show: bool = False):
-    split_command = command.split(" ")
-    output = subprocess.Popen(split_command, stdout=subprocess.PIPE).communicate()
-    if show:
-        print(output[0].decode("utf-8"))
-    else:
-        return output[0].decode("utf-8")
+class Sensitivities:
+    def __init__(self, grbsens_files: dict, energy_limits: dict) -> None:
 
+        self.output = {}
+        self.energy_limits = energy_limits
 
-def ParseGrbsens(catFileName, Separator="\t", names=None, orient="list"):
-    as_dict = pd.read_csv(catFileName, sep=Separator, comment="#", names=names).to_dict(
-        orient=orient
-    )
-    return as_dict
+        # make interpolations of the sensitivity curves
+        for site, zeniths in grbsens_files.items():
+            self.output[site] = {}
+            for zenith, file in zeniths.items():
+                self.output[site][zenith] = self.fit_grbsens(file)
 
+    def parse_grbsens(
+        self, grbsens_file, Separator="\t", names=None, orient="list"
+    ) -> dict:
 
-def open_grbsens(filename: str):
-    col_names = ["obs_time", "crab_flux", "photon_flux", "energy_flux", "sensitivity"]
-    sensi_list = ParseGrbsens(filename, names=col_names, orient="list")
+        as_dict = pd.read_csv(
+            grbsens_file, sep=Separator, comment="#", names=names
+        ).to_dict(orient=orient)
 
-    return sensi_list
+        return as_dict
 
+    def open_grbsens(self, grbsens_file) -> dict:
 
-# open grbsens files and create interpolation class:
-def get_interpolation(filename: str):
-    sensi_list = open_grbsens(filename)
-    # interpolation, x-> obstime, y-> photon_flux
-    interpolation = interp1d(sensi_list["obs_time"], sensi_list["photon_flux"])
+        col_names = [
+            "obs_time",
+            "crab_flux",
+            "photon_flux",
+            "energy_flux",
+            "sensitivity",
+        ]
+        sensi_list = self.parse_grbsens(grbsens_file, names=col_names, orient="list")
 
-    return interpolation
+        return sensi_list
 
+    def fit_grbsens(self, grbsens_file):
 
-def get_interpolation_dict(file_dict: dict):
-    for direction, zeniths in file_dict.items():
-        for zenith, file in zeniths.items():
-            file_dict[direction][zenith] = get_interpolation(
-                file_dict[direction][zenith]
-            )
+        grbsens = self.open_grbsens(grbsens_file)
 
-    return file_dict
+        result = scipy.stats.linregress(
+            np.log10(grbsens["obs_time"]), np.log10(grbsens["photon_flux"])
+        )
 
+        return result
 
-def interpolate_grbsens(x: float, direction: str, zenith: int, interpolations: dict):
+    def get(self, t, site, zenith):
 
-    try:
-        return interpolations[direction.lower()][zenith](x)
-    except KeyError:
-        raise AttributeError(f"No {direction} z{zenith} file found!")
+        slope, intercept = (
+            self.output[site][zenith].slope,
+            self.output[site][zenith].intercept,
+        )
 
+        return 10 ** (slope * np.log10(t) + intercept)
 
-def fit_grbsens(filepath: str):
-    grbsens = open_grbsens(filepath)
+    def get_energy_limits(self, site, zenith):
 
-    result = scipy.stats.linregress(
-        np.log10(grbsens["obs_time"]), np.log10(grbsens["photon_flux"])
-    )
-
-    return result
-
-
-def get_fit_dict(file_dict: dict):
-    output = {}
-
-    for direction, zeniths in file_dict.items():
-        output[direction] = {}
-        for zenith, file in zeniths.items():
-            # get fit and write results
-            result = fit_grbsens(file)
-            output[direction][zenith] = result
-
-    return output
-
-
-def fit(t: float, fit_dict: dict, site: str, zenith: int):
-    if zenith not in [20, 40, 60]:
-        raise AttributeError("Zenith must be 20, 40, or 60.")
-
-    if site.lower() not in ["south", "north"]:
-        raise AttributeError("Site must be `south` or `north`.")
-
-    result = fit_dict[site.lower()][zenith]
-
-    # catch really low numbers
-    if t < 0.1:
-        t = 0.1
-
-    return 10 ** (result.slope * np.log10(t) + result.intercept)
-
-
-def fit_compact(t: float, slope: float, intercept: float):
-    return 10 ** (slope * np.log10(t) + intercept)
-
-
-def get_energy_limits(zenith: int):
-    if zenith not in [20, 40, 60]:
-        raise AttributeError("Zenith must be 20, 40, or 60.")
-    if zenith == 20:
-        lower, upper = 30, 10000
-    elif zenith == 40:
-        lower, upper = 40, 10000
-    else:
-        lower, upper = 110, 10000
-
-    return lower, upper
+        return (
+            self.energy_limits[site.lower()][int(zenith)]["min"],
+            self.energy_limits[site.lower()][int(zenith)]["max"],
+        )
 
 
 class GRB:
@@ -143,10 +99,12 @@ class GRB:
         random_seed=0,
         zeniths=[20, 40, 60],
         sites=["south", "north"],
-    ):
+        energy_limits=[30, 10000],
+    ) -> None:
 
         self.zenith = 0
         self.site = "south"
+        self.min_energy, self.max_energy = energy_limits
         self.seen = False
         self.obs_time = -1
         self.start_time = -1
@@ -168,8 +126,6 @@ class GRB:
 
             self.time = datatime.field(0)
             self.energy = dataenergy.field(0)
-            self.min_energy = min(self.energy)
-            self.max_energy = max(self.energy)
 
             self.spectra = np.nan_to_num(
                 np.array([datalc.field(i) for i, e in enumerate(self.energy)])
@@ -196,7 +152,7 @@ class GRB:
         else:
             return (lambda e: self.spectrum(e, time))(energy)[0][0]
 
-    def get_lightcurve(self, energy, time=None):
+    def get_flux(self, energy, time=None):
 
         if not time:
             time = self.time
@@ -206,30 +162,75 @@ class GRB:
         else:
             return (lambda t: self.spectrum(energy, t))(time)[0][0]
 
-    def get_integral_spectrum(self, time):
+    def power_law(self, energy, spectral_index=-2.1, energy_0=None, normalization=1):
 
-        return integrate.quad(
-            lambda energy: self.get_spectrum(time, energy),
-            self.min_energy,
-            self.max_energy,
+        if not energy_0:
+            energy_0 = min(self.energy)
+
+        return normalization * (energy / energy_0) ** (spectral_index)
+
+    def get_integral_spectrum(self, time, min_energy, max_energy):
+
+        integral_spectrum = integrate.quad(
+            lambda energy: self.power_law(
+                energy,
+                spectral_index=self.get_spectral_index(time),
+                energy_0=min(self.energy),
+                normalization=self.get_flux(energy=min(self.energy), time=time),
+            ),
+            min_energy,
+            max_energy,
         )[0]
 
-    def get_integral_flux(self, time):
+        return integral_spectrum
 
-        return integrate.quad(
-            lambda energy: self.get_lightcurve(energy, time),
-            self.min_energy,
-            self.max_energy,
-        )[0]
+    def get_fluence(self, start_time, stop_time, min_energy=None, max_energy=None):
 
-    def get_fluence(self, start_time, stop_time):
+        if not min_energy:
+            min_energy = self.min_energy
+        if not max_energy:
+            max_energy = self.max_energy
 
-        return integrate.quad(
-            lambda time: self.get_integral_flux(time)
-            * self.get_integral_spectrum(time),
+        integral_spectrum = integrate.quad(
+            lambda time: self.get_integral_spectrum(time, min_energy, max_energy),
             start_time,
             stop_time,
         )[0]
+
+        """
+        integral_spectrum = integrate.quad(
+            lambda energy: self.power_law(energy), min_energy, max_energy
+        )[0]"""
+
+        normalization = integrate.quad(
+            lambda time: self.get_flux(min(self.energy), time),
+            start_time,
+            stop_time,
+        )[0]
+
+        fluence = integrate.quad(
+            lambda time: self.get_flux(min(self.energy), time)
+            * self.get_integral_spectrum(time, min_energy, max_energy),
+            start_time,
+            stop_time,
+        )[0]
+
+        print(
+            f"    Normalization_flux: {normalization} Integral_spectrum: {integral_spectrum}"
+        )
+
+        print(
+            f"    Fluence: {fluence} norm*int_spec = {normalization * integral_spectrum}"
+        )
+        return integral_spectrum
+
+    def get_spectral_index(self, time):
+
+        spectrum = self.get_spectrum(time)
+
+        idx = np.isfinite(spectrum) & (spectrum > 0)
+
+        return np.polyfit(np.log10(self.energy[idx]), np.log10(spectrum[idx]), 1)[0]
 
     def output(self):
 
@@ -239,53 +240,6 @@ class GRB:
             for key, value in self.__dict__.items()
             if key not in keys_to_drop
         }
-
-
-# Spectrum
-def spectrum(x, spectral_index=-2.1):
-    # This is correct for on-axis GRBs, but not for off-axis
-    # TODO: we'll have to implement some changes as not all GRBs were modelled with the same spectrum
-    return (x / 1) ** (spectral_index)
-
-
-def fit_spectral_index(grb: dict):
-
-    # get the starting times of each bin
-    times = np.array([i[0] for i in grb["lc"].data])
-    energies = np.array([i[0] for i in grb["energy"].data])
-
-    indices = []
-
-    for time_idx, time in enumerate(times):
-
-        spectrum = np.array(grb["lc"].data[time_idx])[0:-7]
-
-        m, b = np.polyfit(np.log10(energies), np.log10(spectrum), 1)
-
-        indices.append(m)
-
-    return indices
-
-
-def get_flux(grb: dict, t):
-
-    pass
-
-
-def get_integral_spectra(zeniths: list):
-    output = {}
-
-    for z in zeniths:
-        output[z] = {}
-
-        lower, upper = get_energy_limits(z)
-
-        intl, errl = integrate.quad(lambda x: spectrum(x), lower, upper)
-
-        output[z]["integral"] = intl
-        output[z]["error"] = errl
-
-    return output
 
 
 def _to_iterator(obj_ids):
@@ -302,22 +256,28 @@ def _to_iterator(obj_ids):
 
 def observe_grb(
     grb_file_path,
-    fit_dict: dict,
+    sensitivity: Sensitivities,
     start_time: float = 0,
     max_time=None,
     zeniths=[20, 40, 60],
     sites=["south", "north"],
+    energy_limits=[30, 10000],
     random_seed=1,
     precision=1,
 ):
     """Modified version to increase timestep along with time size"""
 
     # load GRB data
-    grb = GRB(grb_file_path, random_seed=random_seed, zeniths=zeniths, sites=sites)
+    grb = GRB(
+        grb_file_path,
+        random_seed=random_seed,
+        zeniths=zeniths,
+        sites=sites,
+        energy_limits=energy_limits,
+    )
 
-    # from grbsens
-    sens_slope = fit_dict[grb.site][grb.zenith].slope
-    sens_intercept = fit_dict[grb.site][grb.zenith].intercept
+    # get energy limits
+    grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
 
     # set default max time
     if max_time is None:
@@ -338,26 +298,39 @@ def observe_grb(
 
     while t < max_time:  # second loop from 1 to max integration time
 
+        print(
+            f"NEW LOOP; t={t:.2f}, dt={dt:.2f}, previous_t={previous_t:.2f}, previous_dt={previous_dt:.2f} n={n:.2f}"
+        )
+
         if autostep:
 
             dt = 10 ** int(np.floor(np.log10(t)))
 
+            print(f"    AUTOSTEP; t={t} dt={dt}")
             if dt != previous_dt:  # if changing scale, reset n
                 n = 1
+                print(f"    AUTOSTEP; resetting n")
 
         t = start_time + n * dt  # tstart = 210, + loop number
         obst = t - original_tstart  # how much actual observing time has gone by
+        print(
+            f"    Updating t: t: {t:.2f}, obs_t: {obst:.2f} start_time: {start_time:.2f}, n: {n:.2f}, dt: {dt:.2f}"
+        )
 
         # Interpolation and integration of the flux with time
-        average_flux = grb.get_fluence(original_tstart, t)
+        average_flux = grb.get_fluence(original_tstart, t) / obst
 
         # calculate photon flux
-        photon_flux = fit_compact(obst, sens_slope, sens_intercept)
+        photon_flux = sensitivity.get(t=obst, site=grb.site, zenith=grb.zenith)
 
-        # print(f"t={t:.2f}, dt={dt}, avgflux={avg_flux}, photon_flux={photon_flux}")
+        print(
+            f"    t={t:.2f}, dt={dt:.2f}, avgflux={average_flux}, photon_flux={photon_flux}"
+        )
 
         if average_flux > photon_flux:  # if it is visible:
-            # print(f"\nClose solution, t={round(t, precision)}, avgflux={avg_flux}, photon_flux={photon_flux}")
+            print(
+                f"\nClose solution, t={round(t, precision)}, avgflux={average_flux}, photon_flux={photon_flux}"
+            )
 
             if dt > (10 ** (-1 * precision)):
 
@@ -385,6 +358,7 @@ def observe_grb(
             previous_dt = dt
             previous_t = t
             n = n + 0.1
+            print(f"    Updating n: {n:.2f}")
 
     return pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
 
@@ -403,7 +377,7 @@ if __name__ == "__main__":
     n_grbs = parsed_yaml_file["grbs_to_analyze"]
 
     n_cores = parsed_yaml_file["ncores"]
-    files = parsed_yaml_file["grbsens_files"]
+    grbsens_files = parsed_yaml_file["grbsens_files"]
     first_index = parsed_yaml_file["first_index"]
     last_index = parsed_yaml_file["last_index"]
     output_filename = parsed_yaml_file["output_filename"]
@@ -412,6 +386,7 @@ if __name__ == "__main__":
     time_delays = parsed_yaml_file["time_delays"]
     precision = parsed_yaml_file["precision"]
     random_seed = parsed_yaml_file["random_seed"]
+    energy_limits = parsed_yaml_file["energy_limits"]
 
     if not first_index:
         first_index = 0
@@ -429,7 +404,7 @@ if __name__ == "__main__":
     )
 
     # generate look-up dictionary of fits of the sensitivities
-    fit_dict = get_fit_dict(files)
+    sensitivity = Sensitivities(grbsens_files, energy_limits)
 
     # initialize ray and create remote solver
     print("Starting ray:")
@@ -443,7 +418,7 @@ if __name__ == "__main__":
     grb_object_ids = [
         observe_grb_remote.remote(
             grb_file_path,
-            fit_dict,
+            sensitivity,
             start_time=delay,
             zeniths=zeniths,
             sites=sites,
