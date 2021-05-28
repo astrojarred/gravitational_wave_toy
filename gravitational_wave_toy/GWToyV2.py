@@ -347,7 +347,7 @@ def run():
 
     catalog_directory = parsed_yaml_file["catalog"]
     file_list = glob.glob(catalog_directory)
-    n_grbs = parsed_yaml_file["grbs_to_analyze"]
+    n_grbs = parsed_yaml_file.get("grbs_to_analyze")
 
     n_cores = parsed_yaml_file.get("ncores")
     grbsens_files = parsed_yaml_file["grbsens_files"]
