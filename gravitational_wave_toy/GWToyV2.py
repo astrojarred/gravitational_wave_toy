@@ -10,6 +10,7 @@
 # imports
 import glob
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -229,8 +230,10 @@ def _to_iterator(obj_ids):
 def observe_grb(
     grb_file_path,
     sensitivity: Sensitivities,
+    log_directory=None,
     start_time: float = 0,
     max_time=None,
+    max_angle=360,
     zeniths=[20, 40, 60],
     sites=["south", "north"],
     energy_limits=[30, 10000],
@@ -247,6 +250,17 @@ def observe_grb(
         sites=sites,
         energy_limits=energy_limits,
     )
+
+    # check for angle
+    if grb.angle > max_angle:
+        return None
+
+    # check for file already existing
+    log_filename = f"{log_directory}/run{grb.run}_ID{grb.id}_{start_time}_{grb.site}_z{grb.zenith}.csv"
+
+    if Path(log_filename).exists():
+        logging.debug(f"Output already exists: {log_filename}")
+        return pd.read_csv(log_filename, index_col=0)
 
     # get energy limits
     grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
@@ -320,7 +334,7 @@ def observe_grb(
                 grb.end_time = round(tend, precision)
                 grb.obs_time = round(obst, precision)
                 grb.seen = True
-                # print(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
+                logging.debug(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
 
                 break
 
@@ -332,7 +346,11 @@ def observe_grb(
             n = n + 0.1
             logging.debug(f"    Updating n: {n:.2f}")
 
-    return pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
+    # create dataframe and save it
+    df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
+    df.to_csv(log_filename)
+
+    return df
 
 
 def run():
@@ -346,10 +364,12 @@ def run():
 
     catalog_directory = parsed_yaml_file["catalog"]
     file_list = glob.glob(f"{catalog_directory}/*.fits")
+    log_directory = parsed_yaml_file.get("log_directory")
     n_grbs = parsed_yaml_file.get("grbs_to_analyze")
 
     n_cores = parsed_yaml_file.get("ncores")
     grbsens_files = parsed_yaml_file["grbsens_files"]
+    maximum_angle = parsed_yaml_file.get("maximum_angle")
     first_index = parsed_yaml_file.get("first_index")
     last_index = parsed_yaml_file.get("last_index")
     output_filename = parsed_yaml_file["output_filename"]
@@ -364,8 +384,16 @@ def run():
     if not n_cores:
         n_cores = 1
 
+    # create the log directory if needed
+    if not log_directory:
+        log_directory = "./gw_toy_logs"
+    Path.mkdir(log_directory, parents=True, exist_ok=True)
+
     if not precision:
         precision = 2
+
+    if not maximum_angle:
+        maximum_angle = 360
 
     # determine which grbs to analyze
     if n_grbs:
@@ -404,6 +432,7 @@ def run():
         observe_grb_remote.remote(
             grb_file_path,
             sensitivity,
+            log_directory=log_directory,
             start_time=delay,
             zeniths=zeniths,
             sites=sites,
@@ -420,7 +449,8 @@ def run():
     # run the observations
     grb_dfs = []
     for obj_id in grb_object_ids:
-        grb_dfs.append(ray.get(obj_id))
+        if ray.get(obj_id):
+            grb_dfs.append(ray.get(obj_id))
 
     logging.info("Done observing!\nCreating file output.")
 

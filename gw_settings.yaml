@@ -5,6 +5,7 @@ ncores: 52
 
 catalog: "/Users/jarred/Documents/Projects/gravitational_wave_toy/GammaCatalogV2.0"
 output_filename: gw_toy_results_log.csv
+log_directory: "gw_v2_toy_on_axis"
 
 first_index: null  # set to null to ignore
 last_index: null   # set to null to ignore
@@ -12,6 +13,9 @@ precision: 2  # number of decimal places to calculate for each observation time
 
 # seed to ranomly pick which zenith to use for each merger
 random_seed: 42
+
+# set maximum viewing angle
+max_angle: null
 
 zeniths:
   - 20
