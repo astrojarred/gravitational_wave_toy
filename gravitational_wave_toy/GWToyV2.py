@@ -387,7 +387,7 @@ def run():
     # create the log directory if needed
     if not log_directory:
         log_directory = "./gw_toy_logs"
-    Path.mkdir(log_directory, parents=True, exist_ok=True)
+    Path(log_directory).mkdir(parents=True, exist_ok=True)
 
     if not precision:
         precision = 2
