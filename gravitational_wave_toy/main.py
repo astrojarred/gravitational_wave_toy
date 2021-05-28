@@ -4,8 +4,7 @@ import GWToyV2
 import GWPlotter
 
 # activaate logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 
 def run():

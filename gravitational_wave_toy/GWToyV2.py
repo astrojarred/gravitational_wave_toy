@@ -23,8 +23,7 @@ from scipy.interpolate import RectBivariateSpline
 from tqdm.auto import tqdm
 
 # activaate logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 # classes
 class Sensitivities:
@@ -194,7 +193,7 @@ class GRB:
             stop_time,
         )[0]
 
-        logger.debug(f"    Fluence: {fluence}")
+        logging.debug(f"    Fluence: {fluence}")
         return fluence
 
     def get_spectral_index(self, time):
@@ -271,7 +270,7 @@ def observe_grb(
 
     while t < max_time:  # second loop from 1 to max integration time
 
-        logger.debug(
+        logging.debug(
             f"NEW LOOP; t={t:.2f}, dt={dt:.2f}, previous_t={previous_t:.2f}, previous_dt={previous_dt:.2f} n={n:.2f}"
         )
 
@@ -279,14 +278,14 @@ def observe_grb(
 
             dt = 10 ** int(np.floor(np.log10(t)))
 
-            logger.debug(f"    AUTOSTEP; t={t} dt={dt}")
+            logging.debug(f"    AUTOSTEP; t={t} dt={dt}")
             if dt != previous_dt:  # if changing scale, reset n
                 n = 1
-                logger.debug(f"    AUTOSTEP; resetting n")
+                logging.debug(f"    AUTOSTEP; resetting n")
 
         t = start_time + n * dt  # tstart = 210, + loop number
         obst = t - original_tstart  # how much actual observing time has gone by
-        logger.debug(
+        logging.debug(
             f"    Updating t: t: {t:.2f}, obs_t: {obst:.2f} start_time: {start_time:.2f}, n: {n:.2f}, dt: {dt:.2f}"
         )
 
@@ -296,12 +295,12 @@ def observe_grb(
         # calculate photon flux
         photon_flux = sensitivity.get(t=obst, site=grb.site, zenith=grb.zenith)
 
-        logger.debug(
+        logging.debug(
             f"    t={t:.2f}, dt={dt:.2f}, avgflux={average_flux}, photon_flux={photon_flux}"
         )
 
         if average_flux > photon_flux:  # if it is visible:
-            logger.debug(
+            logging.debug(
                 f"\nClose solution, t={round(t, precision)}, avgflux={average_flux}, photon_flux={photon_flux}"
             )
 
@@ -331,18 +330,18 @@ def observe_grb(
             previous_dt = dt
             previous_t = t
             n = n + 0.1
-            logger.debug(f"    Updating n: {n:.2f}")
+            logging.debug(f"    Updating n: {n:.2f}")
 
     return pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
 
 
 def run():
 
-    logger.info("Welcome to GWToy for CTA, for use with catalogue v1.")
+    logging.info("Welcome to GWToy for CTA, for use with catalogue v1.")
 
     # load in the settings
     with open("./gw_settings.yaml") as file:
-        logger.info("Settings file found!")
+        logging.info("Settings file found!")
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
     catalog_directory = parsed_yaml_file["catalog"]
@@ -379,7 +378,7 @@ def run():
 
         n_grbs = last_index - first_index
 
-    logger.info(
+    logging.info(
         f"Settings:\n"
         f"  - {n_cores} cores\n"
         f"  - output filename: {output_filename}\n"
@@ -393,13 +392,13 @@ def run():
     sensitivity = Sensitivities(grbsens_files, energy_limits)
 
     # initialize ray and create remote solver
-    logger.info("Starting ray:")
+    logging.info("Starting ray:")
     ray.init(num_cpus=n_cores)
     observe_grb_remote = ray.remote(observe_grb)
 
     total_runs = n_grbs * len(time_delays)
 
-    logger.info(f"Running {total_runs} observations")
+    logging.info(f"Running {total_runs} observations")
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
@@ -423,19 +422,19 @@ def run():
     for obj_id in grb_object_ids:
         grb_dfs.append(ray.get(obj_id))
 
-    logger.info("Done observing!\nCreating file output.")
+    logging.info("Done observing!\nCreating file output.")
 
     # create the final pandas dataframe and write to a csv
     final_table = pd.concat(grb_dfs)
     final_table.to_csv(output_filename, index=False)
-    logger.info(f"Saved csv: {output_filename}")
+    logging.info(f"Saved csv: {output_filename}")
     pickle_filename = output_filename.split(".")[0] + ".pkl"
     final_table.to_pickle(pickle_filename)
-    logger.info(f"Saved pandas dataframe: {pickle_filename}")
+    logging.info(f"Saved pandas dataframe: {pickle_filename}")
 
     ray.shutdown()
 
-    logger.info("All done!")
+    logging.info("All done!")
 
 
 if __name__ == "__main__":
