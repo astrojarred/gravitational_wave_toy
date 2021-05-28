@@ -191,38 +191,14 @@ class GRB:
         if not max_energy:
             max_energy = self.max_energy
 
-        integral_spectrum = integrate.quad(
+        fluence = integrate.quad(
             lambda time: self.get_integral_spectrum(time, min_energy, max_energy),
             start_time,
             stop_time,
         )[0]
 
-        """
-        integral_spectrum = integrate.quad(
-            lambda energy: self.power_law(energy), min_energy, max_energy
-        )[0]"""
-
-        normalization = integrate.quad(
-            lambda time: self.get_flux(min(self.energy), time),
-            start_time,
-            stop_time,
-        )[0]
-
-        fluence = integrate.quad(
-            lambda time: self.get_flux(min(self.energy), time)
-            * self.get_integral_spectrum(time, min_energy, max_energy),
-            start_time,
-            stop_time,
-        )[0]
-
-        print(
-            f"    Normalization_flux: {normalization} Integral_spectrum: {integral_spectrum}"
-        )
-
-        print(
-            f"    Fluence: {fluence} norm*int_spec = {normalization * integral_spectrum}"
-        )
-        return integral_spectrum
+        print(f"    Fluence: {fluence}")
+        return fluence
 
     def get_spectral_index(self, time):
 
