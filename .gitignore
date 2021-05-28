@@ -153,5 +153,7 @@ ObservingTimes*.py
 ObsTimes*/
 gwUti*.py
 *.pkl
+results/
+plots_*/
 GW*.png
 off-axis-plots/
