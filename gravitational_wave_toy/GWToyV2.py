@@ -370,12 +370,14 @@ def run():
 
     # determine which grbs to analyze
     if n_grbs:
-        first_index, last_index = 0, n_grbs - 1
+        first_index, last_index = 0, n_grbs
     else:
         if not first_index:
             first_index = 0
         if not last_index:
             last_index = len(file_list)
+
+        n_grbs = last_index - first_index
 
     logger.info(
         f"Settings:\n"
@@ -395,7 +397,7 @@ def run():
     ray.init(num_cpus=n_cores)
     observe_grb_remote = ray.remote(observe_grb)
 
-    total_runs = len(range(first_index, last_index)) * len(zeniths) * len(time_delays)
+    total_runs = n_grbs * len(time_delays)
 
     logger.info(f"Running {total_runs} observations")
     # set up each observation
