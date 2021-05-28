@@ -349,22 +349,33 @@ def run():
     file_list = glob.glob(catalog_directory)
     n_grbs = parsed_yaml_file["grbs_to_analyze"]
 
-    n_cores = parsed_yaml_file["ncores"]
+    n_cores = parsed_yaml_file.get("ncores")
     grbsens_files = parsed_yaml_file["grbsens_files"]
-    first_index = parsed_yaml_file["first_index"]
-    last_index = parsed_yaml_file["last_index"]
+    first_index = parsed_yaml_file.get("first_index")
+    last_index = parsed_yaml_file.get("last_index")
     output_filename = parsed_yaml_file["output_filename"]
     zeniths = parsed_yaml_file["zeniths"]
     sites = parsed_yaml_file["sites"]
     time_delays = parsed_yaml_file["time_delays"]
-    precision = parsed_yaml_file["precision"]
-    random_seed = parsed_yaml_file["random_seed"]
+    precision = parsed_yaml_file.get("precision")
+    random_seed = parsed_yaml_file.get("random_seed")
     energy_limits = parsed_yaml_file["energy_limits"]
 
-    if not first_index:
-        first_index = 0
-    if not last_index:
-        last_index = len(file_list)
+    # parse inputs
+    if not n_cores:
+        n_cores = 1
+
+    if not precision:
+        precision = 2
+
+    # determine which grbs to analyze
+    if n_grbs:
+        first_index, last_index = 0, n_grbs - 1
+    else:
+        if not first_index:
+            first_index = 0
+        if not last_index:
+            last_index = len(file_list)
 
     logger.info(
         f"Settings:\n"
