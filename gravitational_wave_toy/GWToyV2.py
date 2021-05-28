@@ -346,7 +346,7 @@ def run():
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
     catalog_directory = parsed_yaml_file["catalog"]
-    file_list = glob.glob(catalog_directory)
+    file_list = glob.glob(f"{catalog_directory}/*.fits")
     n_grbs = parsed_yaml_file.get("grbs_to_analyze")
 
     n_cores = parsed_yaml_file.get("ncores")
