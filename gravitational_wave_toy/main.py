@@ -1,7 +1,7 @@
 import logging
 
-import GWToyV2
-import GWPlotter
+from . import GWToyV2
+from . import GWPlotter
 
 # activaate logger
 logging.basicConfig(level=logging.INFO)
