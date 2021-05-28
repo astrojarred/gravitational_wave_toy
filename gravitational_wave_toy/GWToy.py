@@ -294,26 +294,42 @@ def observe_grb(
 
     while t < max_time:  # second loop from 1 to max integration time
 
+        # print(
+        #     f"NEW LOOP; t={t:.2f}, dt={dt:.2f}, previous_t={previous_t:.2f}, previous_dt={previous_dt:.2f} n={n:.2f}"
+        # )
+
         if autostep:
 
             dt = 10 ** int(np.floor(np.log10(t)))
 
+            # print(f"    AUTOSTEP; t={t:.2f} dt={dt:.2f}")
             if dt != previous_dt:  # if changing scale, reset n
                 n = 1
+                # print(f"    AUTOSTEP; resetting n")
 
         t = tstart + n * dt  # tstart = 210, + loop number
         obst = t - original_tstart  # how much actual observing time has gone by
+        # print(
+        #     f"    Updating t: {t:.2f}, obs_t: {obst:.2f} start_time: {tstart:.2f}, n: {n:.2f}, dt: {dt:.2f}"
+        # )
 
         fluence = integrate.quad(flux, original_tstart, t)
+        # print(
+        #     f"    Normalization_flux: {fluence[0]} Integral_spectrum: {integral_spectrum}"
+        # )
         avg_flux = fluence[0] * integral_spectrum / obst
 
         # calculate photon flux
         photon_flux = fit_compact(obst, sens_slope, sens_intercept)
 
-        # print(f"t={t:.2f}, dt={dt}, avgflux={avg_flux}, photon_flux={photon_flux}")
+        # print(
+        #     f"    t={t:.2f}, dt={dt:.2f}, avgflux={avg_flux}, photon_flux={photon_flux}"
+        # )
 
         if avg_flux > photon_flux:  # if it is visible:
-            # print(f"\nClose solution, t={round(t, precision)}, avgflux={avg_flux}, photon_flux={photon_flux}")
+            # print(
+            #     f"\nClose solution, t={round(t, precision)}, avgflux={avg_flux}, photon_flux={photon_flux}"
+            # )
 
             if dt > (10 ** (-1 * precision)):
 
@@ -341,6 +357,7 @@ def observe_grb(
             previous_dt = dt
             previous_t = t
             n = n + 0.1
+            # print(f"    Updating n: {n:.2f}")
 
     # print(f"Seen: {new_row['seen']}")
     del grb["lc"], grb["time"], grb["energy"], grb["spec"]
