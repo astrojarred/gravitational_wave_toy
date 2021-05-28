@@ -24,13 +24,35 @@ sites:
 
 grbsens_files:
   north:
-    20: grbsens-5.0sigma_t1s-t16384s_irf-North_z20_0.5h.txt
-    40: grbsens-5.0sigma_t1s-t16384s_irf-North_z40_0.5h.txt
-    60: grbsens-5.0sigma_t1s-t16384s_irf-North_z60_0.5h.txt
+    20: grbsens_output_v2_May_2021/grbsens-5.0sigma_t1s-t16384s_irf-North_z20_0.5h.txt
+    40: grbsens_output_v2_May_2021/grbsens-5.0sigma_t1s-t16384s_irf-North_z40_0.5h.txt
+    60: grbsens_output_v2_May_2021/grbsens-5.0sigma_t1s-t16384s_irf-North_z60_0.5h.txt
   south:
-    20: grbsens-5.0sigma_t1s-t16384s_irf-South_z20_0.5h.txt
-    40: grbsens-5.0sigma_t1s-t16384s_irf-South_z40_0.5h.txt
-    60: grbsens-5.0sigma_t1s-t16384s_irf-South_z60_0.5h.txt
+    20: grbsens_output_v2_May_2021/grbsens-5.0sigma_t1s-t16384s_irf-South_z20_0.5h.txt
+    40: grbsens_output_v2_May_2021/grbsens-5.0sigma_t1s-t16384s_irf-South_z40_0.5h.txt
+    60: grbsens_output_v2_May_2021/grbsens-5.0sigma_t1s-t16384s_irf-South_z60_0.5h.txt
+
+energy_limits:  # in GeV
+  north:
+    20:
+      min: 30
+      max: 10000
+    40:
+      min: 40
+      max: 10000
+    60:
+      min: 110
+      max: 10000
+  south: 
+    20: 
+      min: 30
+      max: 10000
+    40: 
+      min: 40
+      max: 10000
+    60: 
+      min: 110
+      max: 10000
 
 time_delays:  # in seconds
 # log scale from 10s to 24h (50 bins)
