@@ -7,29 +7,26 @@
 #   Version: 5.0 (August 2020)
 #   Author(s): B. Patricelli (barbara.patricelli@pi.infn.it)
 
-
-# Imports
-import os
-import subprocess
-import yaml
-
-from scipy.interpolate import interp1d, RectBivariateSpline
-from scipy import integrate, rand
-import scipy.stats
-import scipy
-
+# imports
 import glob
+import logging
 
-import ray
-from tqdm.auto import tqdm
-
-from astropy.io import fits
 import numpy as np
 import pandas as pd
+import ray
+import scipy
+import scipy.stats
+import yaml
+from astropy.io import fits
+from scipy import integrate
+from scipy.interpolate import RectBivariateSpline
+from tqdm.auto import tqdm
+
+# activaate logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # classes
-
-
 class Sensitivities:
     def __init__(self, grbsens_files: dict, energy_limits: dict) -> None:
 
@@ -197,7 +194,7 @@ class GRB:
             stop_time,
         )[0]
 
-        print(f"    Fluence: {fluence}")
+        logger.debug(f"    Fluence: {fluence}")
         return fluence
 
     def get_spectral_index(self, time):
@@ -274,7 +271,7 @@ def observe_grb(
 
     while t < max_time:  # second loop from 1 to max integration time
 
-        print(
+        logger.debug(
             f"NEW LOOP; t={t:.2f}, dt={dt:.2f}, previous_t={previous_t:.2f}, previous_dt={previous_dt:.2f} n={n:.2f}"
         )
 
@@ -282,14 +279,14 @@ def observe_grb(
 
             dt = 10 ** int(np.floor(np.log10(t)))
 
-            print(f"    AUTOSTEP; t={t} dt={dt}")
+            logger.debug(f"    AUTOSTEP; t={t} dt={dt}")
             if dt != previous_dt:  # if changing scale, reset n
                 n = 1
-                print(f"    AUTOSTEP; resetting n")
+                logger.debug(f"    AUTOSTEP; resetting n")
 
         t = start_time + n * dt  # tstart = 210, + loop number
         obst = t - original_tstart  # how much actual observing time has gone by
-        print(
+        logger.debug(
             f"    Updating t: t: {t:.2f}, obs_t: {obst:.2f} start_time: {start_time:.2f}, n: {n:.2f}, dt: {dt:.2f}"
         )
 
@@ -299,12 +296,12 @@ def observe_grb(
         # calculate photon flux
         photon_flux = sensitivity.get(t=obst, site=grb.site, zenith=grb.zenith)
 
-        print(
+        logger.debug(
             f"    t={t:.2f}, dt={dt:.2f}, avgflux={average_flux}, photon_flux={photon_flux}"
         )
 
         if average_flux > photon_flux:  # if it is visible:
-            print(
+            logger.debug(
                 f"\nClose solution, t={round(t, precision)}, avgflux={average_flux}, photon_flux={photon_flux}"
             )
 
@@ -334,18 +331,18 @@ def observe_grb(
             previous_dt = dt
             previous_t = t
             n = n + 0.1
-            print(f"    Updating n: {n:.2f}")
+            logger.debug(f"    Updating n: {n:.2f}")
 
     return pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
 
 
 if __name__ == "__main__":
 
-    print("Welcome to GWToy for CTA, for use with catalogue v1.")
+    logger.info("Welcome to GWToy for CTA, for use with catalogue v1.")
 
     # load in the settings
     with open("./gw_settings.yaml") as file:
-        print("Settings file found!")
+        logger.info("Settings file found!")
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
     catalog_directory = parsed_yaml_file["catalog"]
@@ -369,7 +366,7 @@ if __name__ == "__main__":
     if not last_index:
         last_index = len(file_list)
 
-    print(
+    logger.info(
         f"Settings:\n"
         f"  - {n_cores} cores\n"
         f"  - output filename: {output_filename}\n"
@@ -383,13 +380,13 @@ if __name__ == "__main__":
     sensitivity = Sensitivities(grbsens_files, energy_limits)
 
     # initialize ray and create remote solver
-    print("Starting ray:")
+    logger.info("Starting ray:")
     ray.init(num_cpus=n_cores)
     observe_grb_remote = ray.remote(observe_grb)
 
     total_runs = len(range(first_index, last_index)) * len(zeniths) * len(time_delays)
 
-    print(f"Running {total_runs} observations")
+    logger.info(f"Running {total_runs} observations")
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
@@ -413,16 +410,16 @@ if __name__ == "__main__":
     for obj_id in grb_object_ids:
         grb_dfs.append(ray.get(obj_id))
 
-    print("Done observing!\nCreating file output.")
+    logger.info("Done observing!\nCreating file output.")
 
     # create the final pandas dataframe and write to a csv
     final_table = pd.concat(grb_dfs)
     final_table.to_csv(output_filename, index=False)
-    print(f"Saved csv: {output_filename}")
+    logger.info(f"Saved csv: {output_filename}")
     pickle_filename = output_filename.split(".")[0] + ".pkl"
     final_table.to_pickle(pickle_filename)
-    print(f"Saved pandas dataframe: {pickle_filename}")
+    logger.info(f"Saved pandas dataframe: {pickle_filename}")
 
     ray.shutdown()
 
-    print("All done!")
+    logger.info("All done!")
