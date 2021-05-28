@@ -336,7 +336,7 @@ def observe_grb(
     return pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
 
 
-if __name__ == "__main__":
+def run():
 
     logger.info("Welcome to GWToy for CTA, for use with catalogue v1.")
 
@@ -423,3 +423,8 @@ if __name__ == "__main__":
     ray.shutdown()
 
     logger.info("All done!")
+
+
+if __name__ == "__main__":
+
+    run()

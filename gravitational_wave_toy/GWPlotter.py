@@ -170,7 +170,7 @@ def plot_toy(
     # print(f"Saved plot {output_file}")
 
 
-if __name__ == "__main__":
+def run():
 
     # set matplotlib backend
     matplotlib.use("Agg")
@@ -224,3 +224,8 @@ if __name__ == "__main__":
                 annotate=annotate,
             )
             loading_bar.update(1)
+
+
+if __name__ == "__main__":
+
+    run()
