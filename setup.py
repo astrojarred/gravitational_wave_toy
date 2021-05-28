@@ -11,7 +11,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="gravitational_wave_toy",
-    description="A tool to .",
+    description="A tool to simulate and plot GRB observations with CTA using ctools.",
     version="1.1",
     packages=["gravitational_wave_toy"],
     url="https://github.com/astrojarred/gravitational_wave_toy/",
