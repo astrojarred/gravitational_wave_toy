@@ -289,7 +289,7 @@ def observe_grb(
 
     # set default max time
     if max_time is None:
-        max_time = 86400 + start_time  # 24h after starting observations
+        max_time = 43200 + start_time  # 12h after starting observations
     else:
         max_time += start_time
 
@@ -356,7 +356,7 @@ def observe_grb(
                 grb.end_time = round(tend, precision)
                 grb.obs_time = round(obst, precision)
                 grb.seen = True
-                logging.debug(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
+                logging.info(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
 
                 break
 
