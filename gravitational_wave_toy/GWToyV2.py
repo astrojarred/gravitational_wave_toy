@@ -20,7 +20,7 @@ import scipy.stats
 import yaml
 from astropy.io import fits
 from scipy import integrate
-from scipy.interpolate import RectBivariateSpline
+from scipy.interpolate import interp1d, RectBivariateSpline
 from tqdm.auto import tqdm
 
 # activaate logger
@@ -130,6 +130,10 @@ class GRB:
 
         # get interpolation
         self.spectrum = RectBivariateSpline(self.energy, self.time, self.spectra)
+        self.power_law_slopes = np.array(
+            [self.fit_spectral_index(time) for time in self.time]
+        )
+        self.spectral_indices = interp1d(self.time, self.power_law_slopes)
 
         # set site and zenith
         self.rng = np.random.default_rng(
@@ -138,6 +142,10 @@ class GRB:
 
         self.site = self.rng.choice(sites)
         self.zenith = self.rng.choice(zeniths)
+
+        logging.info(
+            f"Got GRB run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
+        )
 
     def get_spectrum(self, time, energy=None):
 
@@ -158,6 +166,10 @@ class GRB:
             return (lambda t: self.spectrum(energy, t))(time)[0]
         else:
             return (lambda t: self.spectrum(energy, t))(time)[0][0]
+
+    def get_spectral_index(self, time):
+
+        return self.spectral_indices(np.array([time]))[0]
 
     def power_law(self, energy, spectral_index=-2.1, energy_0=None, normalization=1):
 
@@ -197,17 +209,27 @@ class GRB:
         logging.debug(f"    Fluence: {fluence}")
         return fluence
 
-    def get_spectral_index(self, time):
+    def fit_spectral_index(self, time, cut=3):
 
-        spectrum = self.get_spectrum(time)
+        spectrum = self.get_spectrum(time)[:-cut]
+
+        energy = self.energy[:-cut]
 
         idx = np.isfinite(spectrum) & (spectrum > 0)
 
-        return np.polyfit(np.log10(self.energy[idx]), np.log10(spectrum[idx]), 1)[0]
+        return np.polyfit(np.log10(energy[idx]), np.log10(spectrum[idx]), 1)[0]
 
     def output(self):
 
-        keys_to_drop = ["time", "energy", "spectra", "spectrum", "rng"]
+        keys_to_drop = [
+            "time",
+            "energy",
+            "spectra",
+            "spectrum",
+            "rng",
+            "power_law_slopes",
+            "spectral_indices",
+        ]
         return {
             key: value
             for key, value in self.__dict__.items()
