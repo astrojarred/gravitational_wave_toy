@@ -42,12 +42,12 @@ def analyze(input_data, site=None, zenith=None, obs_times=None):
     data = input_data
 
     if site:
-        data = data[data["observatory"] == site.lower().capitalize()]
+        data = data[data["site"] == site.lower().capitalize()]
 
     if zenith:
         data = data[data["zenith"] == zenith]
 
-    delays = np.unique(data["tstart"])
+    delays = np.unique(data["start_time"])
 
     if obs_times is None:
         obs_times = [2 ** x for x in range(0, 16)]
@@ -59,11 +59,11 @@ def analyze(input_data, site=None, zenith=None, obs_times=None):
         for obs_time in obs_times:
             new = {}
             results[delay][obs_time] = {}
-            current_data = data[data["tstart"] == delay]
+            current_data = data[data["start_time"] == delay]
             results[delay][obs_time]["seen"] = len(
                 current_data[
-                    (current_data["obstime"] <= obs_time)
-                    & (current_data["obstime"] > 0)
+                    (current_data["obs_time"] <= obs_time)
+                    & (current_data["obs_time"] > 0)
                 ]
             )
             results[delay][obs_time]["total"] = len(current_data)
