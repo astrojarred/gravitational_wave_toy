@@ -433,7 +433,7 @@ def observe_grb(
     df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
     df.to_csv(log_filename)
 
-    return df
+    return log_filename
 
 
 def run():
@@ -530,23 +530,34 @@ def run():
         pass
 
     # run the observations
-    logging.info("Done observing!\nCreating the combined output.")
-    grb_dfs = []
+    logging.info("Done observing!\nCollecting csv filenames.")
+    csvs = []
     for obj_id in tqdm(grb_object_ids, total=total_runs):
         if not isinstance(ray.get(obj_id), type(None)):
-            grb_dfs.append(ray.get(obj_id))
+            csvs.append(ray.get(obj_id))
 
-    logging.info("Saving files.")
+    logging.info("Done. Shutting down Ray.")
+    ray.shutdown()
+
+    logging.info("Creating the combined output")
 
     # create the final pandas dataframe and write to a csv
-    final_table = pd.concat(grb_dfs)
+    dfs = []
+    for filename in tqdm(csvs, total=total_runs):
+        try:
+            df = pd.read_csv(filename, index_col=0)
+            dfs.append(df)
+        except pd.errors.EmptyDataError:
+            pass
+
+    final_table = pd.concat(dfs, axis=0)
+
+    logging.info("Saving files. ")
     final_table.to_csv(output_filename, index=False)
     logging.info(f"Saved csv: {output_filename}")
     pickle_filename = output_filename.split(".")[0] + ".pkl"
     final_table.to_pickle(pickle_filename)
     logging.info(f"Saved pandas dataframe: {pickle_filename}")
-
-    ray.shutdown()
 
     logging.info("All done!")
 
