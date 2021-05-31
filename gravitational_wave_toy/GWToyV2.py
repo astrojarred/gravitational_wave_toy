@@ -299,7 +299,7 @@ def check_if_visible(grb: GRB, sensitivity: Sensitivities, start_time, stop_time
     return visible
 
 
-def observe_grb_fast(
+def observe_grb(
     grb_file_path,
     sensitivity: Sensitivities,
     log_directory=None,
@@ -361,7 +361,7 @@ def observe_grb_fast(
     loop_number = 0
     precision = int(10 ** int(np.floor(np.log10(max_time + delay))))
     observation_time = precision
-    last_visible = 0
+    previous_observation_time = precision
 
     # find the inflection point
     while loop_number < 10000:
@@ -407,134 +407,6 @@ def observe_grb_fast(
             observation_time += precision
             # update DT and loop again
 
-    df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
-    df.to_csv(log_filename)
-
-    return df
-
-
-def observe_grb(
-    grb_file_path,
-    sensitivity: Sensitivities,
-    log_directory=None,
-    start_time: float = 0,
-    max_time=None,
-    max_angle=360,
-    zeniths=[20, 40, 60],
-    sites=["south", "north"],
-    energy_limits=[30, 10000],
-    random_seed=1,
-    precision=1,
-    read=True,
-):
-    """Modified version to increase timestep along with time size"""
-
-    # load GRB data
-    grb = GRB(
-        grb_file_path,
-        random_seed=random_seed,
-        zeniths=zeniths,
-        sites=sites,
-        energy_limits=energy_limits,
-    )
-
-    # check for angle
-    if grb.angle > max_angle:
-        return None
-
-    # check for file already existing
-    log_filename = f"{log_directory}/run{grb.run}_ID{grb.id}_{start_time}_{grb.site}_z{grb.zenith}.csv"
-
-    if read:
-        if Path(log_filename).exists():
-            logging.debug(f"Output already exists: {log_filename}")
-            return pd.read_csv(log_filename, index_col=0)
-
-    # get energy limits
-    grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
-
-    # set default max time
-    if max_time is None:
-        max_time = 43200 + start_time  # 12h after starting observations
-    else:
-        max_time += start_time
-
-    # start the procedure
-    dt = 1
-    grb.start_time = start_time
-
-    n = 1  # keeps track of loops carried out at current scale
-    previous_dt = -1
-    original_tstart = start_time
-    t = start_time + n
-    previous_t = t
-    autostep = True
-
-    while t < max_time:  # second loop from 1 to max integration time
-
-        logging.debug(
-            f"NEW LOOP; t={t:.2f}, dt={dt:.2f}, previous_t={previous_t:.2f}, previous_dt={previous_dt:.2f} n={n:.2f}"
-        )
-
-        if autostep:
-
-            dt = 10 ** int(np.floor(np.log10(t)))
-
-            logging.debug(f"    AUTOSTEP; t={t} dt={dt}")
-            if dt != previous_dt:  # if changing scale, reset n
-                n = 1
-                logging.debug(f"    AUTOSTEP; resetting n")
-
-        t = start_time + n * dt  # tstart = 210, + loop number
-        obst = t - original_tstart  # how much actual observing time has gone by
-        logging.debug(
-            f"    Updating t: t: {t:.2f}, obs_t: {obst:.2f} start_time: {start_time:.2f}, n: {n:.2f}, dt: {dt:.2f}"
-        )
-
-        # Interpolation and integration of the flux with time
-        average_flux = grb.get_fluence(original_tstart, t) / obst
-
-        # calculate photon flux
-        photon_flux = sensitivity.get(t=obst, site=grb.site, zenith=grb.zenith)
-
-        logging.debug(
-            f"    t={t:.2f}, dt={dt:.2f}, avgflux={average_flux}, photon_flux={photon_flux}"
-        )
-
-        if average_flux > photon_flux:  # if it is visible:
-            logging.debug(
-                f"\nClose solution, t={round(t, precision)}, avgflux={average_flux}, photon_flux={photon_flux}"
-            )
-
-            if dt > (10 ** (-1 * precision)):
-
-                # if the desired precision is not reached, go deeper
-                # change scale of dt and go back a step
-                autostep = False
-                start_time = previous_t
-                dt = dt / 10
-                n = 0
-
-            else:
-                # desired prevision is reached! Give solution
-
-                tend = original_tstart + round(obst, precision)
-                grb.end_time = round(tend, precision)
-                grb.obs_time = round(obst, precision)
-                grb.seen = True
-                logging.info(f"dt={dt}, tend={tend}, obst={round(obst,precision)}")
-
-                break
-
-        else:
-            # if not seen yet, keep going
-
-            previous_dt = dt
-            previous_t = t
-            n = n + 0.1
-            logging.debug(f"    Updating n: {n:.2f}")
-
-    # create dataframe and save it
     df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
     df.to_csv(log_filename)
 
