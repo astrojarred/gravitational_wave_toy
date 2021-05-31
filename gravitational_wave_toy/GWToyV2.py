@@ -530,12 +530,13 @@ def run():
         pass
 
     # run the observations
+    logging.info("Done observing!\nCreating the combined output.")
     grb_dfs = []
-    for obj_id in grb_object_ids:
+    for obj_id in tqdm(grb_object_ids, total=total_runs):
         if not isinstance(ray.get(obj_id), type(None)):
             grb_dfs.append(ray.get(obj_id))
 
-    logging.info("Done observing!\nCreating file output.")
+    logging.info("Saving files.")
 
     # create the final pandas dataframe and write to a csv
     final_table = pd.concat(grb_dfs)
