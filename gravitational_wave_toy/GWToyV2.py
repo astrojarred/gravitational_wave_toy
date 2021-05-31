@@ -11,6 +11,7 @@
 import glob
 import logging
 from pathlib import Path
+from typing import Type
 
 import numpy as np
 import pandas as pd
@@ -246,7 +247,16 @@ class GRB:
 
         idx = np.isfinite(spectrum) & (spectrum > 0)
 
-        return np.polyfit(np.log10(energy[idx]), np.log10(spectrum[idx]), 1)[0]
+        try:
+            spectral_index = np.polyfit(
+                np.log10(energy[idx]), np.log10(spectrum[idx]), 1
+            )[0]
+        except TypeError:
+            logging.info("Error fitting index")
+            logging.info(energy, spectrum)
+            spectral_index = np.polyfit(np.log10(energy), np.log10(spectrum), 1)[0]
+
+        return spectral_index
 
     def output(self):
 
