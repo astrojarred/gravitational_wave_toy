@@ -143,7 +143,7 @@ class GRB:
         self.site = self.rng.choice(sites)
         self.zenith = self.rng.choice(zeniths)
 
-        logging.info(
+        logging.debug(
             f"Got GRB run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
         )
 
@@ -292,7 +292,7 @@ def check_if_visible(grb: GRB, sensitivity: Sensitivities, start_time, stop_time
 
     visible = True if average_flux > photon_flux else False
 
-    logging.info(
+    logging.debug(
         f"    visible:{visible} avgflux={average_flux}, photon_flux={photon_flux}"
     )
 
@@ -348,12 +348,12 @@ def observe_grb(
         max_time = 43200  # 12h after starting observations
 
     # check maximum time
-    logging.info(f"Checking if visible is observed for maximum time")
+    logging.debug(f"Checking if visible is observed for maximum time")
     visible = check_if_visible(grb, sensitivity, delay, max_time + delay)
 
     # not visible even after maximum observation time
     if not visible:
-        logging.info(f"GRB not visible after {max_time+delay}s with {delay}s delay")
+        logging.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
         return df
@@ -367,7 +367,7 @@ def observe_grb(
     while loop_number < 10000:
 
         loop_number += 1
-        logging.info(
+        logging.debug(
             f"Starting new loop #{loop_number}; observation_time {observation_time}, precision {precision}"
         )
 
@@ -375,7 +375,7 @@ def observe_grb(
 
         if visible:
 
-            logging.info(
+            logging.debug(
                 f"    GRB Visible at obs_time={observation_time} end_time={delay + observation_time}"
             )
 
@@ -386,19 +386,19 @@ def observe_grb(
                 grb.end_time = round(end_time, round_precision)
                 grb.obs_time = round(observation_time, round_precision)
                 grb.seen = True
-                logging.info(f"    obs_time={observation_time} end_time={end_time}")
+                logging.debug(f"    obs_time={observation_time} end_time={end_time}")
                 break
 
             elif observation_time == precision:
                 # reduce precision
                 precision = 10 ** (int(np.log10(precision)) - 1)
                 observation_time = precision
-                logging.info(f"    Updating precision to {precision}")
+                logging.debug(f"    Updating precision to {precision}")
 
             else:  # reduce precision but add more time
                 precision = 10 ** (int(np.log10(precision)) - 1)
                 observation_time = previous_observation_time + precision
-                logging.info(
+                logging.debug(
                     f"    Going back to {previous_observation_time} and adding more time {precision}s"
                 )
 
