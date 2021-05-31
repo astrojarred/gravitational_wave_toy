@@ -11,6 +11,7 @@
 import warnings
 
 warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
+warnings.simplefilter("ignore", np.RankWarning)
 
 import glob
 import logging
