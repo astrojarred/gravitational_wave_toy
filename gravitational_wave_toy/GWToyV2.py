@@ -525,7 +525,7 @@ def run():
     # run the observations
     grb_dfs = []
     for obj_id in grb_object_ids:
-        if ray.get(obj_id):
+        if not isinstance(ray.get(obj_id), type(None)):
             grb_dfs.append(ray.get(obj_id))
 
     logging.info("Done observing!\nCreating file output.")
