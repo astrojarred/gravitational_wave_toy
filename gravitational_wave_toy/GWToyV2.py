@@ -21,7 +21,6 @@ import yaml
 from astropy.io import fits
 from scipy import integrate
 from scipy.interpolate import interp1d, RectBivariateSpline
-from scipy.optimize import fsolve
 from tqdm.auto import tqdm
 
 # activaate logger
@@ -219,29 +218,6 @@ class GRB:
         idx = np.isfinite(spectrum) & (spectrum > 0)
 
         return np.polyfit(np.log10(energy[idx]), np.log10(spectrum[idx]), 1)[0]
-
-    def fsolve(
-        self,
-        sensitivity: Sensitivities,
-        start_time,
-        stop_time,
-        min_energy=None,
-        max_energy=None,
-    ):
-
-        return np.vectorize(
-            self.get_fluence(start_time, stop_time, min_energy, max_energy)
-            - sensitivity.get()
-        )
-
-    def get_detection_time(self, sensitivity: Sensitivities, start_time, stop_time):
-
-        return fsolve(
-            self.fsolve(
-                sensitivity, start_time, stop_time, self.min_energy, self.max_energy
-            ),
-            start_time + 100,
-        )
 
     def output(self):
 
