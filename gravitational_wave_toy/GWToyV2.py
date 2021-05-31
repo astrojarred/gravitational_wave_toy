@@ -8,6 +8,10 @@
 #   Author(s): B. Patricelli (barbara.patricelli@pi.infn.it)
 
 # imports
+import warnings
+
+warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
+
 import glob
 import logging
 from pathlib import Path
