@@ -209,6 +209,35 @@ class GRB:
         logging.debug(f"    Fluence: {fluence}")
         return fluence
 
+    def get_fast_integral_spectrum(self, time, first_energy_bin):
+
+        spectral_index = self.get_spectral_index(time)
+        spectral_index_plus_one = spectral_index + 1
+
+        integral_spectrum = (
+            self.get_flux(first_energy_bin, time=time)
+            * (first_energy_bin ** (-spectral_index) / spectral_index_plus_one)
+            * (
+                (self.max_energy ** spectral_index_plus_one)
+                - (self.min_energy ** spectral_index_plus_one)
+            )
+        )
+
+        return integral_spectrum
+
+    def get_fast_fluence(self, start_time, stop_time):
+
+        first_energy_bin = min(self.energy)
+
+        fluence = integrate.quad(
+            lambda time: self.get_fast_integral_spectrum(time, first_energy_bin),
+            start_time,
+            stop_time,
+        )[0]
+
+        logging.debug(f"    Fluence: {fluence}")
+        return fluence
+
     def fit_spectral_index(self, time, cut=3):
 
         spectrum = self.get_spectrum(time)[:-cut]
@@ -326,7 +355,7 @@ def observe_grb(
         )
 
         # Interpolation and integration of the flux with time
-        average_flux = grb.get_fluence(original_tstart, t) / obst
+        average_flux = grb.get_fast_fluence(original_tstart, t) / obst
 
         # calculate photon flux
         photon_flux = sensitivity.get(t=obst, site=grb.site, zenith=grb.zenith)
