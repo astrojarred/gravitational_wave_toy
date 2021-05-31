@@ -135,7 +135,9 @@ class GRB:
         )
         slopes_idx = np.isfinite(self.power_law_slopes)
         self.spectral_indices = interp1d(
-            self.time[slopes_idx], self.power_law_slopes[slopes_idx]
+            self.time[slopes_idx],
+            self.power_law_slopes[slopes_idx],
+            fill_value="extrapolate",
         )
 
         # set site and zenith
@@ -241,11 +243,14 @@ class GRB:
         logging.debug(f"    Fluence: {fluence}")
         return fluence
 
-    def fit_spectral_index(self, time, cut=3):
+    def fit_spectral_index(self, time, cut=0):
 
-        spectrum = self.get_spectrum(time)[:-cut]
+        spectrum = self.get_spectrum(time)
+        energy = self.energy
 
-        energy = self.energy[:-cut]
+        if cut > 0:
+            spectrum = spectrum[:-cut]
+            energy = energy[:-cut]
 
         idx = np.isfinite(spectrum) & (spectrum > 0)
 
