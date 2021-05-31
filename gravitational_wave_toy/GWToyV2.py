@@ -278,7 +278,28 @@ def _to_iterator(obj_ids):
             yield 1
 
 
-def observe_grb(
+def check_if_visible(grb: GRB, sensitivity: Sensitivities, start_time, stop_time):
+
+    # Interpolation and integration of the flux with time
+    average_flux = grb.get_fast_fluence(start_time, stop_time) / (
+        stop_time - start_time
+    )
+
+    # calculate photon flux
+    photon_flux = sensitivity.get(
+        t=(stop_time - start_time), site=grb.site, zenith=grb.zenith
+    )
+
+    visible = True if average_flux > photon_flux else False
+
+    logging.info(
+        f"    visible:{visible} avgflux={average_flux}, photon_flux={photon_flux}"
+    )
+
+    return visible
+
+
+def observe_grb_fast(
     grb_file_path,
     sensitivity: Sensitivities,
     log_directory=None,
@@ -289,7 +310,8 @@ def observe_grb(
     sites=["south", "north"],
     energy_limits=[30, 10000],
     random_seed=1,
-    precision=1,
+    target_precision=1,
+    read=True,
 ):
     """Modified version to increase timestep along with time size"""
 
@@ -309,9 +331,124 @@ def observe_grb(
     # check for file already existing
     log_filename = f"{log_directory}/run{grb.run}_ID{grb.id}_{start_time}_{grb.site}_z{grb.zenith}.csv"
 
-    if Path(log_filename).exists():
-        logging.debug(f"Output already exists: {log_filename}")
-        return pd.read_csv(log_filename, index_col=0)
+    if read:
+        if Path(log_filename).exists():
+            logging.debug(f"Output already exists: {log_filename}")
+            return pd.read_csv(log_filename, index_col=0)
+
+    # get energy limits
+    grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
+
+    # start the procedure
+    grb.start_time = start_time
+    delay = start_time
+
+    # set default max time
+    if max_time is None:
+        max_time = 43200  # 12h after starting observations
+
+    # check maximum time
+    logging.info(f"Checking if visible is observed for maximum time")
+    visible = check_if_visible(grb, sensitivity, delay, max_time + delay)
+
+    # not visible even after maximum observation time
+    if not visible:
+        logging.info(f"GRB not visible after {max_time+delay}s with {delay}s delay")
+        df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
+        df.to_csv(log_filename)
+        return df
+
+    loop_number = 0
+    precision = int(10 ** int(np.floor(np.log10(max_time + delay))))
+    observation_time = precision
+    last_visible = 0
+
+    # find the inflection point
+    while loop_number < 10000:
+
+        loop_number += 1
+        logging.info(
+            f"Starting new loop #{loop_number}; observation_time {observation_time}, precision {precision}"
+        )
+
+        visible = check_if_visible(grb, sensitivity, delay, delay + observation_time)
+
+        if visible:
+
+            logging.info(
+                f"    GRB Visible at obs_time={observation_time} end_time={delay + observation_time}"
+            )
+
+            # if desired precision is reached, return results and break!
+            if np.log10(precision) == np.log10(target_precision):
+                round_precision = int(-np.log10(precision))
+                end_time = delay + round(observation_time, round_precision)
+                grb.end_time = round(end_time, round_precision)
+                grb.obs_time = round(observation_time, round_precision)
+                grb.seen = True
+                logging.info(f"    obs_time={observation_time} end_time={end_time}")
+                break
+
+            elif observation_time == precision:
+                # reduce precision
+                precision = 10 ** (int(np.log10(precision)) - 1)
+                observation_time = precision
+                logging.info(f"    Updating precision to {precision}")
+
+            else:  # reduce precision but add more time
+                precision = 10 ** (int(np.log10(precision)) - 1)
+                observation_time = previous_observation_time + precision
+                logging.info(
+                    f"    Going back to {previous_observation_time} and adding more time {precision}s"
+                )
+
+        else:
+            previous_observation_time = observation_time
+            observation_time += precision
+            # update DT and loop again
+
+    df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
+    df.to_csv(log_filename)
+
+    return df
+
+
+def observe_grb(
+    grb_file_path,
+    sensitivity: Sensitivities,
+    log_directory=None,
+    start_time: float = 0,
+    max_time=None,
+    max_angle=360,
+    zeniths=[20, 40, 60],
+    sites=["south", "north"],
+    energy_limits=[30, 10000],
+    random_seed=1,
+    precision=1,
+    read=True,
+):
+    """Modified version to increase timestep along with time size"""
+
+    # load GRB data
+    grb = GRB(
+        grb_file_path,
+        random_seed=random_seed,
+        zeniths=zeniths,
+        sites=sites,
+        energy_limits=energy_limits,
+    )
+
+    # check for angle
+    if grb.angle > max_angle:
+        return None
+
+    # check for file already existing
+    log_filename = f"{log_directory}/run{grb.run}_ID{grb.id}_{start_time}_{grb.site}_z{grb.zenith}.csv"
+
+    if read:
+        if Path(log_filename).exists():
+            logging.debug(f"Output already exists: {log_filename}")
+            return pd.read_csv(log_filename, index_col=0)
 
     # get energy limits
     grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
@@ -355,7 +492,7 @@ def observe_grb(
         )
 
         # Interpolation and integration of the flux with time
-        average_flux = grb.get_fast_fluence(original_tstart, t) / obst
+        average_flux = grb.get_fluence(original_tstart, t) / obst
 
         # calculate photon flux
         photon_flux = sensitivity.get(t=obst, site=grb.site, zenith=grb.zenith)
