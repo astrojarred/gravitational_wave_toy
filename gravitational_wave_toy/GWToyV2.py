@@ -497,7 +497,7 @@ def run():
             zeniths=zeniths,
             sites=sites,
             random_seed=random_seed,
-            precision=precision,
+            target_precision=precision,
         )
         for grb_file_path in file_list[first_index:last_index]
         for delay in sorted(time_delays, reverse=True)
