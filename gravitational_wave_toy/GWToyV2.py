@@ -133,7 +133,10 @@ class GRB:
         self.power_law_slopes = np.array(
             [self.fit_spectral_index(time) for time in self.time]
         )
-        self.spectral_indices = interp1d(self.time, self.power_law_slopes)
+        slopes_idx = np.isfinite(self.power_law_slopes)
+        self.spectral_indices = interp1d(
+            self.time[slopes_idx], self.power_law_slopes[slopes_idx]
+        )
 
         # set site and zenith
         self.rng = np.random.default_rng(
@@ -246,7 +249,18 @@ class GRB:
 
         idx = np.isfinite(spectrum) & (spectrum > 0)
 
-        return np.polyfit(np.log10(energy[idx]), np.log10(spectrum[idx]), 1)[0]
+        try:
+            spectral_index = np.polyfit(
+                np.log10(energy[idx]), np.log10(spectrum[idx]), 1
+            )[0]
+        except TypeError:
+            logging.info(f"Fitting issue at t={time}")
+            logging.info(spectrum)
+            logging.info(energy)
+            logging.info(idx)
+            spectral_index = np.nan
+
+        return spectral_index
 
     def output(self):
 
