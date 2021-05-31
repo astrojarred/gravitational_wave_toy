@@ -19,7 +19,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 
 def open_gw_file(filepath, filetype=None):
@@ -42,7 +42,7 @@ def analyze(input_data, site=None, zenith=None, obs_times=None):
     data = input_data
 
     if site:
-        data = data[data["site"] == site.lower().capitalize()]
+        data = data[data["site"] == site.lower()]
 
     if zenith:
         data = data[data["zenith"] == zenith]
@@ -92,16 +92,17 @@ def convert_time(seconds: float):
 def plot_toy(
     data,
     output_dir,
-    annotate=True,
+    annotate=False,
     site=None,
     zenith=None,
     obs_times=None,
-    x_tick_labels=None,
-    y_tick_labels=None,
+    x_tick_labels="auto",
+    y_tick_labels="auto",
     min_value=None,
     max_value=None,
     color_scheme="viridis",
     filetype="png",
+    show_only=False,
 ):
     sns.set_theme()
 
@@ -163,11 +164,11 @@ def plot_toy(
     plt.title(f"GRB Detectability for {site}, {zenith}")
 
     fig = heatmap.get_figure()
-    output_file = (
-        f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}.{filetype}"
-    )
-    fig.savefig(output_file)
-    # print(f"Saved plot {output_file}")
+
+    if not show_only:
+        output_file = f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}.{filetype}"
+        fig.savefig(output_file)
+        # print(f"Saved plot {output_file}")
 
 
 def run():
@@ -188,13 +189,18 @@ def run():
     annotate = parsed_yaml_file["show_percents"]
     log_scale = parsed_yaml_file["log_scale"]
     color_scheme = parsed_yaml_file["color_scheme"]
-    x_tick_labels = parsed_yaml_file["x_tick_labels"]
-    y_tick_labels = parsed_yaml_file["y_tick_labels"]
+    x_tick_labels = parsed_yaml_file.get("x_tick_labels")
+    y_tick_labels = parsed_yaml_file.get("y_tick_labels")
     min_value = parsed_yaml_file["min_value"]
     max_value = parsed_yaml_file["max_value"]
 
     print(f"Making output directory {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
+
+    if not x_tick_labels:
+        x_tick_labels = "auto"
+    if not y_tick_labels:
+        y_tick_labels = "auto"
 
     data = open_gw_file(input_file)
     print(f"Successfully loaded input file: {input_file}")
