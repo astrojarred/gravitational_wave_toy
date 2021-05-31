@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
+
 import logging
 
 from . import GWToyV2
