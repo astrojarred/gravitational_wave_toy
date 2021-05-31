@@ -254,10 +254,7 @@ class GRB:
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
         except TypeError:
-            logging.info(f"Fitting issue at t={time}")
-            logging.info(spectrum)
-            logging.info(energy)
-            logging.info(idx)
+            logging.debug(f"Spectral index fitting issue at t={time}")
             spectral_index = np.nan
 
         return spectral_index
