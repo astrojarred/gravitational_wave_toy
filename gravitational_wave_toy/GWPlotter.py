@@ -102,6 +102,7 @@ def plot_toy(
     max_value=None,
     color_scheme="viridis",
     filetype="png",
+    subtitle=None,
     show_only=False,
 ):
     sns.set_theme()
@@ -161,7 +162,12 @@ def plot_toy(
     else:
         zenith = f"z{zenith}"
 
-    plt.title(f"GRB Detectability for {site}, {zenith}")
+    if subtitle:
+        plt.title(
+            f"GRB Detectability for {site}, {zenith}: {subtitle} (n={len(np.unique(data.index))})"
+        )
+    else:
+        plt.title(f"GRB Detectability for {site}, {zenith}")
 
     fig = heatmap.get_figure()
 
