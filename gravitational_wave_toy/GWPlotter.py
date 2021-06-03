@@ -101,6 +101,7 @@ def plot_toy(
     min_value=None,
     max_value=None,
     color_scheme="viridis",
+    color_scale=None,
     as_percent=False,
     filetype="png",
     subtitle=None,
@@ -124,6 +125,11 @@ def plot_toy(
     f, ax = plt.subplots(figsize=(9, 9))
 
     cbar_kws = {"label": "Percentage of GRBs detected", "orientation": "vertical"}
+
+    if color_scale == "log":
+        from matplotlib.colors import LogNorm
+
+        color_scale = LogNorm(vmin=min_value, vmax=max_value)
 
     if annotate:
         heatmap = sns.heatmap(
