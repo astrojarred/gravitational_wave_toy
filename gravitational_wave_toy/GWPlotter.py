@@ -101,6 +101,7 @@ def plot_toy(
     min_value=None,
     max_value=None,
     color_scheme="viridis",
+    as_percent=False,
     filetype="png",
     subtitle=None,
     show_only=False,
@@ -115,7 +116,8 @@ def plot_toy(
     df = analyze(data, site=site, zenith=zenith, obs_times=obs_times)
     df.rename(columns={"obs_time": "exposure time"}, inplace=True)
 
-    df["percent"] = df["percent"] * 100
+    if as_percent:
+        df["percent"] = df["percent"] * 100
 
     pivot = df.pivot("exposure time", "delay", "percent").astype(float)
 
