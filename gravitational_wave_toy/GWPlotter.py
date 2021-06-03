@@ -144,6 +144,7 @@ def plot_toy(
             xticklabels=x_tick_labels,
             yticklabels=y_tick_labels,
             cbar_kws=cbar_kws,
+            norm=color_scale,
         )
     else:
         heatmap = sns.heatmap(
@@ -156,6 +157,7 @@ def plot_toy(
             xticklabels=x_tick_labels,
             yticklabels=y_tick_labels,
             cbar_kws=cbar_kws,
+            norm=color_scale,
         )
 
     heatmap.invert_yaxis()
