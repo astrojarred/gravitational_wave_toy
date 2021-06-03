@@ -187,6 +187,8 @@ def plot_toy(
         output_file = f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}{filename_suffix}.{filetype}"
         fig.savefig(output_file)
         # print(f"Saved plot {output_file}")
+    else:
+        plt.show()
 
 
 def run():
