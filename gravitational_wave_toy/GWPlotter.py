@@ -161,6 +161,7 @@ def plot_toy(
         )
 
     heatmap.invert_yaxis()
+    heatmap.set_facecolor("#1C1C1C")
 
     if not site:
         site = "Both sites"
