@@ -105,6 +105,7 @@ def plot_toy(
     as_percent=False,
     filetype="png",
     subtitle=None,
+    filename_suffix="",
     show_only=False,
 ):
     sns.set_theme()
@@ -183,7 +184,7 @@ def plot_toy(
     fig = heatmap.get_figure()
 
     if not show_only:
-        output_file = f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}.{filetype}"
+        output_file = f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}{filename_suffix}.{filetype}"
         fig.savefig(output_file)
         # print(f"Saved plot {output_file}")
 
