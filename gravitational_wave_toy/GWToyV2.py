@@ -138,18 +138,15 @@ class GRB:
         # get interpolation
         self.spectrum = RectBivariateSpline(self.energy, self.time, self.spectra)
 
-        try:
-            self.power_law_slopes = np.array(
-                [self.fit_spectral_index(time) for time in self.time]
-            )
-            slopes_idx = np.isfinite(self.power_law_slopes)
-            self.spectral_indices = interp1d(
-                self.time[slopes_idx],
-                self.power_law_slopes[slopes_idx],
-                fill_value="extrapolate",
-            )
-        except np.linalg.LinAlgError:
-            print("WARNING: LINEAR ALGEBRA ERROR")
+        self.power_law_slopes = np.array(
+            [self.fit_spectral_index(time) for time in self.time]
+        )
+        slopes_idx = np.isfinite(self.power_law_slopes)
+        self.spectral_indices = interp1d(
+            self.time[slopes_idx],
+            self.power_law_slopes[slopes_idx],
+            fill_value="extrapolate",
+        )
 
         # set site and zenith
         self.rng = np.random.default_rng(
