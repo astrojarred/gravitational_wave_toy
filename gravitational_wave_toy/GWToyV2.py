@@ -647,7 +647,7 @@ def run():
         try:
             df = pd.read_csv(filename, index_col=0)
             dfs.append(df)
-        except pd.errors.EmptyDataError:
+        except pd.errors.EmptyDataError or TypeError:
             pass
 
     final_table = pd.concat(dfs, axis=0)
