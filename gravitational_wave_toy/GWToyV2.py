@@ -266,7 +266,7 @@ class GRB:
             spectral_index = np.polyfit(
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
-        except TypeError:
+        except TypeError or ValueError:
             logging.debug(f"Spectral index fitting issue at t={time}")
             spectral_index = np.nan
 
