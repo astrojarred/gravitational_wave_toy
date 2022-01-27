@@ -587,15 +587,18 @@ def run():
     # generate look-up dictionary of fits of the sensitivities
     sensitivity = Sensitivities(grbsens_files, energy_limits)
 
+    total_runs = n_grbs * len(time_delays)
+
     # initialize ray and create remote solver
     logging.info("Starting ray:")
     ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.FATAL)
-    observe_grb_remote = ray.remote(observe_grb)
 
-    total_runs = n_grbs * len(time_delays)
-
+    # start progress bar
     pb = ProgressBar(total_runs)
     actor = pb.actor
+
+    observe_grb_remote = ray.remote(observe_grb)
+
 
     logging.info(f"Running {total_runs} observations")
     # set up each observation
