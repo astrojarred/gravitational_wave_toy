@@ -347,7 +347,7 @@ class GRB:
             spectral_index = np.polyfit(
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
-        except TypeError or ValueError:
+        except (TypeError, ValueError) as e:
             logging.debug(f"Spectral index fitting issue at t={time}")
             spectral_index = np.nan
 
@@ -647,7 +647,7 @@ def run():
         try:
             df = pd.read_csv(filename, index_col=0)
             dfs.append(df)
-        except pd.errors.EmptyDataError or TypeError:
+        except (pd.errors.EmptyDataError, TypeError) as e:
             pass
 
     final_table = pd.concat(dfs, axis=0)
