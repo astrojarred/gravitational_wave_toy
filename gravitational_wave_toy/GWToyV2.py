@@ -432,6 +432,8 @@ def observe_grb(
 
     # check for angle
     if grb.angle > max_angle:
+
+        pba.update.remote(1)
         return None
 
     # check for file already existing
@@ -440,6 +442,8 @@ def observe_grb(
     if read:
         if Path(log_filename).exists():
             logging.debug(f"Output already exists: {log_filename}")
+
+            pba.update.remote(1)
             return pd.read_csv(log_filename, index_col=0)
 
     # get energy limits
@@ -462,6 +466,8 @@ def observe_grb(
         logging.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
+
+        pba.update.remote(1)
         return df
 
     loop_number = 0
@@ -517,7 +523,6 @@ def observe_grb(
     df.to_csv(log_filename)
 
     pba.update.remote(1)
-
     return log_filename
 
 
