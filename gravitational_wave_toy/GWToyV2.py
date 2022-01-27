@@ -639,6 +639,9 @@ def run():
     logging.info("Done. Shutting down Ray.")
     ray.shutdown()
 
+    logging.info("CSVs")
+    logging.info(csvs)
+
     logging.info("Creating the combined output")
 
     # create the final pandas dataframe and write to a csv
