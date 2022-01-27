@@ -627,8 +627,9 @@ def run():
     logging.info("Done observing!\nCollecting csv filenames.")
     csvs = []
     for obj_id in tqdm(grb_object_ids, total=total_runs):
-        if not isinstance(ray.get(obj_id), type(None)):
-            csvs.append(ray.get(obj_id))
+        this_result = ray.get(obj_id)
+        if not isinstance(this_result, type(None)):
+            csvs.append(this_result)
 
     logging.info("Done. Shutting down Ray.")
     ray.shutdown()
