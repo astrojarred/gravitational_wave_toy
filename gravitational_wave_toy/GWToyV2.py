@@ -22,6 +22,7 @@ warnings.simplefilter("ignore", np.RankWarning)
 
 import pandas as pd
 import ray
+from ray.actor import ActorHandle
 import scipy
 import scipy.stats
 import yaml
@@ -94,6 +95,85 @@ class Sensitivities:
             self.energy_limits[site.lower()][int(zenith)]["min"],
             self.energy_limits[site.lower()][int(zenith)]["max"],
         )
+
+@ray.remote
+class ProgressBarActor:
+    counter: int
+    delta: int
+    event: Event
+
+    def __init__(self) -> None:
+        self.counter = 0
+        self.delta = 0
+        self.event = Event()
+
+    def update(self, num_items_completed: int) -> None:
+        """Updates the ProgressBar with the incremental
+        number of items that were just completed.
+        """
+        self.counter += num_items_completed
+        self.delta += num_items_completed
+        self.event.set()
+
+    async def wait_for_update(self) -> Tuple[int, int]:
+        """Blocking call.
+
+        Waits until somebody calls `update`, then returns a tuple of
+        the number of updates since the last call to
+        `wait_for_update`, and the total number of completed items.
+        """
+        await self.event.wait()
+        self.event.clear()
+        saved_delta = self.delta
+        self.delta = 0
+        return saved_delta, self.counter
+
+    def get_counter(self) -> int:
+        """
+        Returns the total number of complete items.
+        """
+        return self.counter
+
+# Back on the local node, once you launch your remote Ray tasks, call
+# `print_until_done`, which will feed everything back into a `tqdm` counter.
+
+
+class ProgressBar:
+    progress_actor: ActorHandle
+    total: int
+    description: str
+    pbar: tqdm
+
+    def __init__(self, total: int, description: str = ""):
+        # Ray actors don't seem to play nice with mypy, generating
+        # a spurious warning for the following line,
+        # which we need to suppress. The code is fine.
+        self.progress_actor = ProgressBarActor.remote()  # type: ignore
+        self.total = total
+        self.description = description
+
+    @property
+    def actor(self) -> ActorHandle:
+        """Returns a reference to the remote `ProgressBarActor`.
+
+        When you complete tasks, call `update` on the actor.
+        """
+        return self.progress_actor
+
+    def print_until_done(self) -> None:
+        """Blocking call.
+
+        Do this after starting a series of remote Ray tasks, to which you've
+        passed the actor handle. Each of them calls `update` on the actor.
+        When the progress meter reaches 100%, this method returns.
+        """
+        pbar = tqdm(desc=self.description, total=self.total)
+        while True:
+            delta, counter = ray.get(self.actor.wait_for_update.remote())
+            pbar.update(delta)
+            if counter >= self.total:
+                pbar.close()
+                return
 
 
 class GRB:
@@ -290,16 +370,16 @@ class GRB:
         }
 
 
-def _to_iterator(obj_ids):
-    """To decide when to update tqdm bar
-    See: https://github.com/ray-project/ray/issues/5554#issuecomment-558397627"""
-
-    while obj_ids:
-        done, obj_ids = ray.wait(obj_ids)
-        try:
-            yield ray.get(done[0])
-        except RuntimeError:
-            yield 1
+# def _to_iterator(obj_ids):
+#     """To decide when to update tqdm bar
+#     See: https://github.com/ray-project/ray/issues/5554#issuecomment-558397627"""
+# 
+#     while obj_ids:
+#         done, obj_ids = ray.wait(obj_ids)
+#         try:
+#             yield ray.get(done[0])
+#         except RuntimeError:
+#             yield 1
 
 
 def check_if_visible(grb: GRB, sensitivity: Sensitivities, start_time, stop_time):
@@ -325,6 +405,7 @@ def check_if_visible(grb: GRB, sensitivity: Sensitivities, start_time, stop_time
 
 def observe_grb(
     grb_file_path,
+    pba,
     sensitivity: Sensitivities,
     log_directory=None,
     start_time: float = 0,
@@ -434,6 +515,8 @@ def observe_grb(
     df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
     df.to_csv(log_filename)
 
+    pba.update.remote(1)
+
     return log_filename
 
 
@@ -510,11 +593,15 @@ def run():
 
     total_runs = n_grbs * len(time_delays)
 
+    pb = ProgressBar(total_runs)
+    actor = pb.actor
+
     logging.info(f"Running {total_runs} observations")
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
             grb_file_path,
+            actor,
             sensitivity,
             log_directory=log_directory,
             start_time=delay,
@@ -527,8 +614,10 @@ def run():
         for delay in sorted(time_delays, reverse=True)
     ]
 
-    for _ in tqdm(_to_iterator(grb_object_ids), total=total_runs):
-        pass
+    pb.print_until_done()
+
+    # for _ in tqdm(_to_iterator(grb_object_ids), total=total_runs):
+    #     pass
 
     # run the observations
     logging.info("Done observing!\nCollecting csv filenames.")
