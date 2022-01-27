@@ -91,24 +91,31 @@ def convert_time(seconds: float):
 
 def plot_toy(
     data,
-    output_dir,
+    output_dir=".",
     annotate=False,
     site=None,
     zenith=None,
     obs_times=None,
     x_tick_labels="auto",
     y_tick_labels="auto",
+    x_tick_values="auto",
+    y_tick_values="auto",
     min_value=None,
     max_value=None,
     color_scheme="viridis",
     color_scale=None,
     as_percent=False,
+    sns_font_scale=1,
     filetype="png",
+    dpi=200,
+    hide_title=False,
     subtitle=None,
     filename_suffix="",
+    get_pivot=False,
     show_only=False,
 ):
     sns.set_theme()
+    sns.set_context("paper", font_scale=sns_font_scale)
 
     if str(zenith).lower() == "all":
         zenith = None
@@ -122,6 +129,9 @@ def plot_toy(
         df["percent"] = df["percent"] * 100
 
     pivot = df.pivot("exposure time", "delay", "percent").astype(float)
+
+    if get_pivot:
+        return pivot
 
     f, ax = plt.subplots(figsize=(9, 9))
 
@@ -158,7 +168,7 @@ def plot_toy(
             xticklabels=x_tick_labels,
             yticklabels=y_tick_labels,
             cbar_kws=cbar_kws,
-            norm=color_scale,
+            # norm=color_scale,
         )
 
     heatmap.invert_yaxis()
@@ -174,21 +184,90 @@ def plot_toy(
     else:
         zenith = f"z{zenith}"
 
-    if subtitle:
-        plt.title(
-            f"GRB Detectability for {site}, {zenith}: {subtitle} (n={len(np.unique(data.index))})"
-        )
-    else:
-        plt.title(f"GRB Detectability for {site}, {zenith}")
+    if not hide_title:
+        if subtitle:
+            plt.title(
+                f"GRB Detectability for {site}, {zenith}: {subtitle} (n={len(np.unique(data.index))})"
+            )
+        else:
+            plt.title(f"GRB Detectability for {site}, {zenith}º")
+
+    plt.xlabel("$t_0$")
+    plt.ylabel("$T_\mathrm{exp}$")
+
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+
+    ax.tick_params(left=True, bottom=True)
+
+    if x_tick_values != "auto":
+        ax.set_xticks(x_tick_values)
+        ax.set_xticklabels(x_tick_labels)
+    if y_tick_values != "auto":
+        ax.set_yticks(y_tick_values)
+        ax.set_yticklabels(y_tick_labels)
+
+
 
     fig = heatmap.get_figure()
 
     if not show_only:
         output_file = f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}{filename_suffix}.{filetype}"
-        fig.savefig(output_file)
+        fig.savefig(output_file, dpi=dpi, bbox_inches="tight", pad_inches=0)
         # print(f"Saved plot {output_file}")
     else:
         plt.show()
+
+
+def plot_combined_toy(
+    data,
+    output_dir=".",
+    obs_times=None,
+    x_tick_labels="auto",
+    y_tick_labels="auto",
+    min_value=None,
+    max_value=None,
+    color_scheme="mako",
+    sns_font_scale=1,
+):
+
+    sns.set_theme()
+    sns.set_context("paper", font_scale=sns_font_scale)
+
+    fig, axn = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(15, 15))
+    cbar_ax = fig.add_axes([0.91, 0.05, 0.03, 0.9])
+
+    cbar_kws = {
+        "label": "Percentage of GRBs detected",
+        "orientation": "vertical",
+    }
+
+    for i, ax in enumerate(axn.flat):
+
+        # get pivot table
+        df = analyze(data[i], obs_times=obs_times)
+        df.rename(columns={"obs_time": "exposure time"}, inplace=True)
+        df["percent"] = df["percent"] * 100
+        pivot = df.pivot("exposure time", "delay", "percent").astype(float)
+
+        # add plot to axes
+        heatmap = sns.heatmap(
+            pivot,
+            ax=ax,
+            annot=False,
+            cmap=color_scheme,
+            cbar=(i == 0),
+            cbar_ax=None if i else cbar_ax,
+            vmin=min_value,
+            vmax=max_value,
+            xticklabels=x_tick_labels,
+            yticklabels=y_tick_labels,
+            cbar_kws=cbar_kws,
+        )
+
+    fig.tight_layout(rect=[0, 0, 0.9, 1])
+
+    plt.show()
 
 
 def run():
