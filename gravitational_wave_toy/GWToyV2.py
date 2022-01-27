@@ -640,7 +640,7 @@ def run():
     ray.shutdown()
 
     logging.info("CSVs")
-    logging.info(csvs)
+    logging.info(csvs[:50])
 
     logging.info("Creating the combined output")
 
