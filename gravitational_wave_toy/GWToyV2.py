@@ -444,7 +444,8 @@ def observe_grb(
             logging.debug(f"Output already exists: {log_filename}")
 
             pba.update.remote(1)
-            return pd.read_csv(log_filename, index_col=0)
+            # return pd.read_csv(log_filename, index_col=0)
+            return log_filename
 
     # get energy limits
     grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
@@ -639,8 +640,8 @@ def run():
     logging.info("Done. Shutting down Ray.")
     ray.shutdown()
 
-    logging.info("CSVs")
-    logging.info(csvs[:50])
+    # logging.info("CSVs")
+    # logging.info(type(csvs[0]))
 
     logging.info("Creating the combined output")
 
