@@ -362,7 +362,7 @@ def observe_grb(
 
     # Set up log for run
     run_stamp = f"{Path(grb_file_path).stem}_{start_time}"
-    run_log = logging.FileHandler(filename=f".{log_directory}/logs/{run_stamp}.log")
+    run_log = logging.FileHandler(filename=f"{log_directory}/logs/{run_stamp}.log")
     run_log.name = f"Log {run_stamp}"
     run_log.setLevel(logging.DEBUG)
     formatter = logging.Formatter("%(levelname)-8s %(message)s")
