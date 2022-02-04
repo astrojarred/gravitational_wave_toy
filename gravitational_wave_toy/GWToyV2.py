@@ -33,7 +33,7 @@ from tqdm.auto import tqdm
 
 # Set up logging!
 root = logging.getLogger()
-# root.setLevel(logging.INFO)
+root.setLevel(logging.DEBUG)
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -127,6 +127,8 @@ class GRB:
         energy_limits=[30, 10000],
     ) -> None:
 
+        logger = logging.getLogger(__name__)
+
         self.zenith = 0
         self.site = "south"
         self.min_energy, self.max_energy = energy_limits
@@ -177,7 +179,7 @@ class GRB:
         self.site = self.rng.choice(sites)
         self.zenith = self.rng.choice(zeniths)
 
-        logging.debug(
+        logger.debug(
             f"Got GRB run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
         )
 
@@ -229,6 +231,8 @@ class GRB:
 
     def get_fluence(self, start_time, stop_time, min_energy=None, max_energy=None):
 
+        logger = logging.getLogger(__name__)
+
         if not min_energy:
             min_energy = self.min_energy
         if not max_energy:
@@ -240,7 +244,7 @@ class GRB:
             stop_time,
         )[0]
 
-        logging.debug(f"    Fluence: {fluence}")
+        logger.debug(f"    Fluence: {fluence}")
         return fluence
 
     def get_fast_integral_spectrum(self, time, first_energy_bin):
@@ -261,6 +265,8 @@ class GRB:
 
     def get_fast_fluence(self, start_time, stop_time):
 
+        logger = logging.getLogger(__name__)
+
         first_energy_bin = min(self.energy)
 
         fluence = integrate.quad(
@@ -269,10 +275,12 @@ class GRB:
             stop_time,
         )[0]
 
-        logging.debug(f"    Fluence: {fluence}")
+        logger.debug(f"    Fluence: {fluence}")
         return fluence
 
     def fit_spectral_index(self, time, cut=0):
+
+        logger = logging.getLogger(__name__)
 
         spectrum = self.get_spectrum(time)
         energy = self.energy
@@ -288,7 +296,7 @@ class GRB:
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
         except (TypeError, ValueError) as e:
-            logging.debug(f"Spectral index fitting issue at t={time}. Error details: {e}")
+            logger.debug(f"Spectral index fitting issue at t={time}. Error details: {e}")
             spectral_index = np.nan
 
         return spectral_index
@@ -486,11 +494,13 @@ def observe_grb(
 
 def run():
 
-    logging.info("Welcome to GWToy for CTA, for use with catalogue v1.")
+    logger = logging.getLogger(__name__)
+
+    logger.info("Welcome to GWToy for CTA, for use with catalogue v1.")
 
     # load in the settings
     with open("./gw_settings.yaml") as file:
-        logging.info("Settings file found!")
+        logger.info("Settings file found!")
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
     catalog_directory = parsed_yaml_file["catalog"]
@@ -538,7 +548,7 @@ def run():
 
         n_grbs = last_index - first_index
 
-    logging.info(
+    logger.info(
         f"Settings:\n"
         f"  - {n_cores} cores\n"
         f"  - output filename: {output_filename}\n"
@@ -552,13 +562,13 @@ def run():
     sensitivity = Sensitivities(grbsens_files, energy_limits)
 
     # initialize ray and create remote solver
-    logging.info("Starting ray:")
-    ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.FATAL)
+    logger.info("Starting ray:")
+    ray.init(num_cpus=n_cores, log_to_driver=False, logger_level=logger.FATAL)
     observe_grb_remote = ray.remote(observe_grb)
 
     total_runs = n_grbs * len(time_delays)
 
-    logging.info(f"Running {total_runs} observations")
+    logger.info(f"Running {total_runs} observations")
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
@@ -579,17 +589,17 @@ def run():
         pass
 
     # run the observations
-    logging.info("Done observing!\nCollecting csv filenames.")
+    logger.info("Done observing!\nCollecting csv filenames.")
     csvs = []
     for obj_id in tqdm(grb_object_ids, total=total_runs):
         this_result = ray.get(obj_id)
         if not isinstance(this_result, type(None)):
             csvs.append(this_result)
 
-    logging.info("Done. Shutting down Ray.")
+    logger.info("Done. Shutting down Ray.")
     ray.shutdown()
 
-    logging.info("Creating the combined output")
+    logger.info("Creating the combined output")
 
     # create the final pandas dataframe and write to a csv
     dfs = []
@@ -602,14 +612,14 @@ def run():
 
     final_table = pd.concat(dfs, axis=0)
 
-    logging.info("Saving files. ")
+    logger.info("Saving files. ")
     final_table.to_csv(output_filename, index=False)
-    logging.info(f"Saved csv: {output_filename}")
+    logger.info(f"Saved csv: {output_filename}")
     pickle_filename = output_filename.split(".")[0] + ".pkl"
     final_table.to_pickle(pickle_filename)
-    logging.info(f"Saved pandas dataframe: {pickle_filename}")
+    logger.info(f"Saved pandas dataframe: {pickle_filename}")
 
-    logging.info("All done!")
+    logger.info("All done!")
 
 
 if __name__ == "__main__":
