@@ -32,8 +32,29 @@ from scipy import integrate
 from scipy.interpolate import interp1d, RectBivariateSpline
 from tqdm.auto import tqdm
 
-# activaate logger
-logging.basicConfig(level=logging.INFO)
+
+# Set up logging!
+root = logging.getLogger()
+# root.setLevel(logging.INFO)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+    datefmt="%m-%d %H:%M",
+    filename=f"./main_log.log",
+    filemode="a",
+)
+
+# define a Handler which writes INFO messages or higher to the sys.stderr
+console = logging.StreamHandler()
+console.name = "Console"
+console.setLevel(logging.INFO)
+# set a format which is simpler for console use
+formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
+# tell the handler to use this format
+console.setFormatter(formatter)
+# add the handler to the root logger
+root.addHandler(console)
 
 # classes
 class Sensitivities:
@@ -359,7 +380,8 @@ class GRB:
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
         except (TypeError, ValueError) as e:
-            logging.debug(f"Spectral index fitting issue at t={time}")
+            logging.debug(f"Spectral index fitting issue at t={time}. Error details: {e}")
+
             spectral_index = np.nan
 
         return spectral_index
@@ -440,6 +462,20 @@ def observe_grb(
         sites=sites,
         energy_limits=energy_limits,
     )
+
+    # Set up log for run
+    run_stamp = f"run{grb.run}_ID{grb.id}_{start_time}_{grb.site}_z{grb.zenith}"
+    run_log = logging.FileHandler(filename=f".{log_directory}/logs/{run_stamp}.log")
+    run_log.name = f"Log {run_stamp}"
+    run_log.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(levelname)-8s %(message)s")
+    run_log.setFormatter(formatter)
+    root.addHandler(run_log)
+
+    # get interpolation dict
+    logging.debug("About to get interpolation")
+    grb.get_interpolation()
+    logging.debug("Done with interpolation step")
 
     # check for angle
     if grb.angle > max_angle:
@@ -535,6 +571,10 @@ def observe_grb(
     df.to_csv(log_filename)
 
     pba.update.remote(1)
+
+    # close log file
+    root.removeHandler(run_log)
+
     return log_filename
 
 
@@ -573,6 +613,7 @@ def run():
     if not log_directory:
         log_directory = "./gw_toy_logs"
     Path(log_directory).mkdir(parents=True, exist_ok=True)
+    Path(log_directory/"logs").mkdir(parents=True, exist_ok=True)
 
     if not precision:
         precision = 2
