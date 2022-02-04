@@ -195,6 +195,10 @@ class GRB:
         self.start_time = -1
         self.end_time = -1
 
+        self.random_seed = random_seed
+        self.zeniths = zeniths
+        self.sites = sites
+
         with fits.open(filepath) as hdu_list:
 
             self.run = hdu_list[0].header["RUN"]
@@ -216,6 +220,12 @@ class GRB:
                 np.array([datalc.field(i) for i, e in enumerate(self.energy)])
             )
 
+            logging.debug(
+                f"Got GRB run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
+            )
+
+    def get_interpolation(self):
+
         # get interpolation
         self.spectrum = RectBivariateSpline(self.energy, self.time, self.spectra)
 
@@ -231,14 +241,15 @@ class GRB:
 
         # set site and zenith
         self.rng = np.random.default_rng(
-            int(self.id) * 10000 + int(self.run) + random_seed
+            int(self.id) * 10000 + int(self.run) + self.random_seed
         )
 
-        self.site = self.rng.choice(sites)
-        self.zenith = self.rng.choice(zeniths)
+        self.site = self.rng.choice(self.sites)
+        self.zenith = self.rng.choice(self.zeniths)
+
 
         logging.debug(
-            f"Got GRB run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
+            f"Done interpolating run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
         )
 
     def get_spectrum(self, time, energy=None):
