@@ -452,7 +452,7 @@ def observe_grb(
     run_log.setFormatter(formatter)
     root.addHandler(run_log)
 
-
+    logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
     grb = GRB(
         grb_file_path,
@@ -461,6 +461,8 @@ def observe_grb(
         sites=sites,
         energy_limits=energy_limits,
     )
+
+    logging.debug(f"Done loading GRB file {Path(grb_file_path).stem}")
 
     # check for angle
     if grb.angle > max_angle:
