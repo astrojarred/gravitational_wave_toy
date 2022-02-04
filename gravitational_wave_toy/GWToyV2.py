@@ -368,7 +368,7 @@ def observe_grb(
     run_log.setLevel(logging.DEBUG)
     formatter = logging.Formatter("%(levelname)-8s %(message)s")
     run_log.setFormatter(formatter)
-    root.addHandler(run_log)
+    logger.addHandler(run_log)
 
     logger.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
@@ -386,7 +386,7 @@ def observe_grb(
     if grb.angle > max_angle:
 
         logger.debug("GRB not in angle range... skipping.")
-        root.removeHandler(run_log)
+        logger.removeHandler(run_log)
         return None
 
     # check for file already existing
@@ -396,7 +396,7 @@ def observe_grb(
         if Path(log_filename).exists():
             logger.debug(f"Output already exists: {log_filename}")
             
-            root.removeHandler(run_log)
+            logger.removeHandler(run_log)
             # return pd.read_csv(log_filename, index_col=0)
             return log_filename
 
@@ -421,7 +421,7 @@ def observe_grb(
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
 
-        root.removeHandler(run_log)
+        logger.removeHandler(run_log)
         return df
 
     loop_number = 0
@@ -478,7 +478,7 @@ def observe_grb(
 
     logger.debug("GRB success")
 
-    root.removeHandler(run_log)
+    logger.removeHandler(run_log)
 
     return log_filename
 
