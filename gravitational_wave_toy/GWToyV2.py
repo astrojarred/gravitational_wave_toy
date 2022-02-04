@@ -30,8 +30,29 @@ from scipy import integrate
 from scipy.interpolate import interp1d, RectBivariateSpline
 from tqdm.auto import tqdm
 
-# activaate logger
-logging.basicConfig(level=logging.INFO)
+
+# Set up logging!
+root = logging.getLogger()
+# root.setLevel(logging.INFO)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+    datefmt="%m-%d %H:%M",
+    filename=f"./main_log.log",
+    filemode="a",
+)
+
+# define a Handler which writes INFO messages or higher to the sys.stderr
+console = logging.StreamHandler()
+console.name = "Console"
+console.setLevel(logging.INFO)
+# set a format which is simpler for console use
+formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
+# tell the handler to use this format
+console.setFormatter(formatter)
+# add the handler to the root logger
+root.addHandler(console)
 
 # classes
 class Sensitivities:
@@ -266,8 +287,8 @@ class GRB:
             spectral_index = np.polyfit(
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
-        except TypeError or ValueError:
-            logging.debug(f"Spectral index fitting issue at t={time}")
+        except (TypeError, ValueError) as e:
+            logging.debug(f"Spectral index fitting issue at t={time}. Error details: {e}")
             spectral_index = np.nan
 
         return spectral_index
@@ -339,6 +360,16 @@ def observe_grb(
 ):
     """Modified version to increase timestep along with time size"""
 
+    # Set up log for run
+    run_stamp = f"{Path(grb_file_path).stem}_{start_time}"
+    run_log = logging.FileHandler(filename=f".{log_directory}/logs/{run_stamp}.log")
+    run_log.name = f"Log {run_stamp}"
+    run_log.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(levelname)-8s %(message)s")
+    run_log.setFormatter(formatter)
+    root.addHandler(run_log)
+
+    logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
     grb = GRB(
         grb_file_path,
@@ -348,8 +379,13 @@ def observe_grb(
         energy_limits=energy_limits,
     )
 
+    logging.debug(f"Done loading GRB file {Path(grb_file_path).stem}")
+
     # check for angle
     if grb.angle > max_angle:
+
+        logging.debug("GRB not in angle range... skipping.")
+        root.removeHandler(run_log)
         return None
 
     # check for file already existing
@@ -358,7 +394,10 @@ def observe_grb(
     if read:
         if Path(log_filename).exists():
             logging.debug(f"Output already exists: {log_filename}")
-            return pd.read_csv(log_filename, index_col=0)
+            
+            root.removeHandler(run_log)
+            # return pd.read_csv(log_filename, index_col=0)
+            return log_filename
 
     # get energy limits
     grb.min_energy, grb.max_energy = sensitivity.get_energy_limits(grb.site, grb.zenith)
@@ -380,6 +419,8 @@ def observe_grb(
         logging.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
+
+        root.removeHandler(run_log)
         return df
 
     loop_number = 0
@@ -433,6 +474,10 @@ def observe_grb(
 
     df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
     df.to_csv(log_filename)
+
+    logging.debug("GRB success")
+
+    root.removeHandler(run_log)
 
     return log_filename
 
