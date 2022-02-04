@@ -563,7 +563,7 @@ def run():
 
     # initialize ray and create remote solver
     logger.info("Starting ray:")
-    ray.init(num_cpus=n_cores, log_to_driver=False, logger_level=logging.FATAL)
+    ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.FATAL)
     observe_grb_remote = ray.remote(observe_grb)
 
     total_runs = n_grbs * len(time_delays)
