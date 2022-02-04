@@ -39,7 +39,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
     datefmt="%m-%d %H:%M",
-    filename=f"./main_log.log",
+    filename="./main_log.log",
     filemode="a",
 )
 
