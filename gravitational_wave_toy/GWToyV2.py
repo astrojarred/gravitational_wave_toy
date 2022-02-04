@@ -613,7 +613,7 @@ def run():
     if not log_directory:
         log_directory = "./gw_toy_logs"
     Path(log_directory).mkdir(parents=True, exist_ok=True)
-    Path(log_directory/"logs").mkdir(parents=True, exist_ok=True)
+    Path(log_directory+"/logs").mkdir(parents=True, exist_ok=True)
 
     if not precision:
         precision = 2
