@@ -32,8 +32,8 @@ from tqdm.auto import tqdm
 
 
 # Set up logging!
-root = logging.getLogger()
-root.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -52,7 +52,7 @@ formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
 # tell the handler to use this format
 console.setFormatter(formatter)
 # add the handler to the root logger
-root.addHandler(console)
+logger.addHandler(console)
 
 # classes
 class Sensitivities:
@@ -127,7 +127,6 @@ class GRB:
         energy_limits=[30, 10000],
     ) -> None:
 
-        logger = logging.getLogger(__name__)
 
         self.zenith = 0
         self.site = "south"
@@ -231,8 +230,6 @@ class GRB:
 
     def get_fluence(self, start_time, stop_time, min_energy=None, max_energy=None):
 
-        logger = logging.getLogger(__name__)
-
         if not min_energy:
             min_energy = self.min_energy
         if not max_energy:
@@ -265,8 +262,6 @@ class GRB:
 
     def get_fast_fluence(self, start_time, stop_time):
 
-        logger = logging.getLogger(__name__)
-
         first_energy_bin = min(self.energy)
 
         fluence = integrate.quad(
@@ -279,8 +274,6 @@ class GRB:
         return fluence
 
     def fit_spectral_index(self, time, cut=0):
-
-        logger = logging.getLogger(__name__)
 
         spectrum = self.get_spectrum(time)
         energy = self.energy
@@ -369,8 +362,6 @@ def observe_grb(
     """Modified version to increase timestep along with time size"""
 
     # Set up log for run
-    logger = logging.getLogger(__name__)
-
     run_stamp = f"{Path(grb_file_path).stem}_{start_time}"
     run_log = logging.FileHandler(filename=f"{log_directory}/logs/{run_stamp}.log")
     run_log.name = f"Log {run_stamp}"
@@ -493,8 +484,6 @@ def observe_grb(
 
 
 def run():
-
-    logger = logging.getLogger(__name__)
 
     logger.info("Welcome to GWToy for CTA, for use with catalogue v1.")
 
