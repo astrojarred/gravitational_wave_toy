@@ -517,6 +517,7 @@ def run():
     if not log_directory:
         log_directory = "./gw_toy_logs"
     Path(log_directory).mkdir(parents=True, exist_ok=True)
+    Path(log_directory+"/logs").mkdir(parents=True, exist_ok=True)
 
     if not precision:
         precision = 2
@@ -579,8 +580,9 @@ def run():
     logging.info("Done observing!\nCollecting csv filenames.")
     csvs = []
     for obj_id in tqdm(grb_object_ids, total=total_runs):
-        if not isinstance(ray.get(obj_id), type(None)):
-            csvs.append(ray.get(obj_id))
+        this_result = ray.get(obj_id)
+        if not isinstance(this_result, type(None)):
+            csvs.append(this_result)
 
     logging.info("Done. Shutting down Ray.")
     ray.shutdown()
@@ -593,7 +595,7 @@ def run():
         try:
             df = pd.read_csv(filename, index_col=0)
             dfs.append(df)
-        except pd.errors.EmptyDataError:
+        except (pd.errors.EmptyDataError, TypeError) as e:
             pass
 
     final_table = pd.concat(dfs, axis=0)
