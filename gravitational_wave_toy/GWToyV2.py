@@ -294,7 +294,7 @@ class GRB:
             # Open a file with access mode 'a'
             with open("./issues.txt", "a") as file_object:
                 # Append 'hello' at the end of file
-                file_object.write(f"{Path(self.filepath).stem},{time},'{e}'")
+                file_object.write(f"{Path(self.filepath).stem},{time},'{e}'\n")
             spectral_index = np.nan
 
         return spectral_index
