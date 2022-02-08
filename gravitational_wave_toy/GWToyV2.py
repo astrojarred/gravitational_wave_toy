@@ -376,7 +376,7 @@ def observe_grb(
     worker_log.name = run_stamp
     worker_log.setLevel(logging.DEBUG)
     # tell the handler to use this format
-    console.setFormatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
+    worker_log.setFormatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
     # add the handler to the root logger
     logging.addHandler(worker_log)
 
