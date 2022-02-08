@@ -128,6 +128,7 @@ class GRB:
     ) -> None:
 
 
+        self.filepath = filepath
         self.zenith = 0
         self.site = "south"
         self.min_energy, self.max_energy = energy_limits
@@ -290,6 +291,10 @@ class GRB:
             )[0]
         except (TypeError, ValueError) as e:
             logger.error(f"{self.run}_{self.id} Spectral index fitting issue at t={time}. Error details: {e}")
+            # Open a file with access mode 'a'
+            with open("./issues.txt", "a") as file_object:
+                # Append 'hello' at the end of file
+                file_object.write(f"{Path(self.filepath).stem},{time},'{e}'")
             spectral_index = np.nan
 
         return spectral_index
