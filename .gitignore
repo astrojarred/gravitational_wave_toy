@@ -1,3 +1,10 @@
+# custom
+.idea/
+from_server/
+poetry.lock
+missing_merges/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
