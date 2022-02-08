@@ -5,7 +5,7 @@ description = ""
 authors = ["Jarred Green <jarred.green@inaf.it>"]
 
 [tool.poetry.dependencies]
-python = "^3.7.9"
+python = "^3.8"
 scipy = "^1.6.0"
 numpy = "^1.19.5"
 matplotlib = "^3.3.3"
