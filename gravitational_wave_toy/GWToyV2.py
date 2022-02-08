@@ -289,7 +289,7 @@ class GRB:
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
         except (TypeError, ValueError) as e:
-            logger.error(f"{self.run}_{self.id} Spectral index fitting issue at t={time}. Error details: {e}")
+            logger.debug(f"{self.run}_{self.id} Spectral index fitting issue at t={time}. Error details: {e}")
             spectral_index = np.nan
 
         return spectral_index
@@ -363,13 +363,22 @@ def observe_grb(
 
     run_stamp = f"{Path(grb_file_path).stem}_{start_time}s"
 
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
-        datefmt="%m-%d %H:%M:%S",
-        filename=f"{log_directory}/logs/{run_stamp}.log",
-        filemode="a",
-    )
+    # logging.basicConfig(
+    #     level=logging.DEBUG,
+    #     format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+    #     datefmt="%m-%d %H:%M:%S",
+    #     filename=f"{log_directory}/logs/{run_stamp}.log",
+    #     filemode="a",
+    # )
+
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    worker_log = logging.FileHandler(f"{log_directory}/logs/{run_stamp}.log")
+    worker_log.name = run_stamp
+    worker_log.setLevel(logging.DEBUG)
+    # tell the handler to use this format
+    console.setFormatter("%(asctime)s %(name)-12s %(levelname)-8s %(message)s")
+    # add the handler to the root logger
+    logging.addHandler(worker_log)
 
     logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
@@ -387,6 +396,7 @@ def observe_grb(
     if grb.angle > max_angle:
 
         logging.debug("GRB not in angle range... skipping.")
+        logging.removeHandler(worker_log)
         return None
 
     # check for file already existing
@@ -397,6 +407,7 @@ def observe_grb(
             logging.debug(f"Output already exists: {log_filename}")
             
             # return pd.read_csv(log_filename, index_col=0)
+            logging.removeHandler(worker_log)
             return log_filename
 
     # get energy limits
@@ -420,6 +431,7 @@ def observe_grb(
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
 
+        logging.removeHandler(worker_log)
         return df
 
     loop_number = 0
@@ -476,6 +488,7 @@ def observe_grb(
 
     logging.debug("GRB success")
 
+    logging.removeHandler(worker_log)
     return log_filename
 
 
