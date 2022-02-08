@@ -289,7 +289,7 @@ class GRB:
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
         except (TypeError, ValueError) as e:
-            logger.debug(f"Spectral index fitting issue at t={time}. Error details: {e}")
+            logger.error(f"{self.run}_{self.id} Spectral index fitting issue at t={time}. Error details: {e}")
             spectral_index = np.nan
 
         return spectral_index
