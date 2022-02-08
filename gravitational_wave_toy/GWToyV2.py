@@ -361,18 +361,17 @@ def observe_grb(
 ):
     """Modified version to increase timestep along with time size"""
 
-    obs_logger = logging.getLogger(__name__)
-
-    # Set up log for run
     run_stamp = f"{Path(grb_file_path).stem}_{start_time}"
-    run_log = logging.FileHandler(filename=f"{log_directory}/logs/{run_stamp}.log")
-    run_log.name = f"Log {run_stamp}"
-    run_log.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(levelname)-8s %(message)s")
-    run_log.setFormatter(formatter)
-    obs_logger.addHandler(run_log)
 
-    obs_logger.debug(f"About to load GRB file {Path(grb_file_path).stem}")
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+        datefmt="%m-%d %H:%M",
+        filename=f"{log_directory}/logs/{run_stamp}.log",
+        filemode="a",
+    )
+
+    logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
     grb = GRB(
         grb_file_path,
@@ -382,13 +381,12 @@ def observe_grb(
         energy_limits=energy_limits,
     )
 
-    obs_logger.debug(f"Done loading GRB file {Path(grb_file_path).stem}")
+    logging.debug(f"Done loading GRB file {Path(grb_file_path).stem}")
 
     # check for angle
     if grb.angle > max_angle:
 
-        obs_logger.debug("GRB not in angle range... skipping.")
-        obs_logger.removeHandler(run_log)
+        logging.debug("GRB not in angle range... skipping.")
         return None
 
     # check for file already existing
@@ -396,9 +394,8 @@ def observe_grb(
 
     if read:
         if Path(log_filename).exists():
-            obs_logger.debug(f"Output already exists: {log_filename}")
+            logging.debug(f"Output already exists: {log_filename}")
             
-            obs_logger.removeHandler(run_log)
             # return pd.read_csv(log_filename, index_col=0)
             return log_filename
 
@@ -414,16 +411,15 @@ def observe_grb(
         max_time = 43200  # 12h after starting observations
 
     # check maximum time
-    obs_logger.debug(f"Checking if visible is observed for maximum time")
+    logging.debug(f"Checking if visible is observed for maximum time")
     visible = check_if_visible(grb, sensitivity, delay, max_time + delay)
 
     # not visible even after maximum observation time
     if not visible:
-        obs_logger.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
+        logging.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
 
-        obs_logger.removeHandler(run_log)
         return df
 
     loop_number = 0
@@ -435,7 +431,7 @@ def observe_grb(
     while loop_number < 10000:
 
         loop_number += 1
-        obs_logger.debug(
+        logging.debug(
             f"Starting new loop #{loop_number}; observation_time {observation_time}, precision {precision}"
         )
 
@@ -443,7 +439,7 @@ def observe_grb(
 
         if visible:
 
-            obs_logger.debug(
+            logging.debug(
                 f"    GRB Visible at obs_time={observation_time} end_time={delay + observation_time}"
             )
 
@@ -454,19 +450,19 @@ def observe_grb(
                 grb.end_time = round(end_time, round_precision)
                 grb.obs_time = round(observation_time, round_precision)
                 grb.seen = True
-                obs_logger.debug(f"    obs_time={observation_time} end_time={end_time}")
+                logging.debug(f"    obs_time={observation_time} end_time={end_time}")
                 break
 
             elif observation_time == precision:
                 # reduce precision
                 precision = 10 ** (int(np.log10(precision)) - 1)
                 observation_time = precision
-                obs_logger.debug(f"    Updating precision to {precision}")
+                logging.debug(f"    Updating precision to {precision}")
 
             else:  # reduce precision but add more time
                 precision = 10 ** (int(np.log10(precision)) - 1)
                 observation_time = previous_observation_time + precision
-                obs_logger.debug(
+                logging.debug(
                     f"    Going back to {previous_observation_time} and adding more time {precision}s"
                 )
 
@@ -478,9 +474,7 @@ def observe_grb(
     df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
     df.to_csv(log_filename)
 
-    obs_logger.debug("GRB success")
-
-    obs_logger.removeHandler(run_log)
+    logging.debug("GRB success")
 
     return log_filename
 
