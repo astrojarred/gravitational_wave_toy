@@ -289,7 +289,7 @@ class GRB:
             spectral_index = np.polyfit(
                 np.log10(energy[idx]), np.log10(spectrum[idx]), 1
             )[0]
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError, SystemError) as e:
             logger.error(f"{self.run}_{self.id} Spectral index fitting issue at t={time}. Error details: {e}")
             # Open a file with access mode 'a'
             with open("./issues.txt", "a") as file_object:
