@@ -361,12 +361,12 @@ def observe_grb(
 ):
     """Modified version to increase timestep along with time size"""
 
-    run_stamp = f"{Path(grb_file_path).stem}_{start_time}"
+    run_stamp = f"{Path(grb_file_path).stem}_{start_time}s"
 
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
-        datefmt="%m-%d %H:%M",
+        datefmt="%m-%d %H:%M:%S",
         filename=f"{log_directory}/logs/{run_stamp}.log",
         filemode="a",
     )
