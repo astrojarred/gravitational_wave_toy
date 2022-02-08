@@ -369,6 +369,7 @@ def observe_grb(
         datefmt="%m-%d %H:%M:%S",
         filename=f"{log_directory}/logs/{run_stamp}.log",
         filemode="a",
+        force=True
     )
     logging.debug(f"Log file should be {log_directory}/logs/{run_stamp}.log")
 
