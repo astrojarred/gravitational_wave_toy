@@ -33,10 +33,10 @@ from tqdm.auto import tqdm
 
 # Set up logging!
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
     datefmt="%m-%d %H:%M",
     filename="./main_log.log",
@@ -366,19 +366,19 @@ def observe_grb(
 ):
     """Modified version to increase timestep along with time size"""
 
-    run_stamp = f"{Path(grb_file_path).stem}_{start_time}s"
+    # run_stamp = f"{Path(grb_file_path).stem}_{start_time}s"
 
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
-        datefmt="%m-%d %H:%M:%S",
-        filename=f"{log_directory}/logs/{run_stamp}.log",
-        filemode="a",
-        force=True
-    )
-    logging.debug(f"Log file should be {log_directory}/logs/{run_stamp}.log")
+    # logging.basicConfig(
+    #     level=logging.DEBUG,
+    #     format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+    #     datefmt="%m-%d %H:%M:%S",
+    #     filename=f"{log_directory}/logs/{run_stamp}.log",
+    #     filemode="a",
+    #     force=True
+    # )
+    # logging.debug(f"Log file should be {log_directory}/logs/{run_stamp}.log")
 
-    logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
+    # logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
     grb = GRB(
         grb_file_path,
@@ -388,12 +388,12 @@ def observe_grb(
         energy_limits=energy_limits,
     )
 
-    logging.debug(f"Done loading GRB file {Path(grb_file_path).stem}")
+    # logging.debug(f"Done loading GRB file {Path(grb_file_path).stem}")
 
     # check for angle
     if grb.angle > max_angle:
 
-        logging.debug("GRB not in angle range... skipping.")
+        # logging.debug("GRB not in angle range... skipping.")
         return None
 
     # check for file already existing
@@ -401,7 +401,7 @@ def observe_grb(
 
     if read:
         if Path(log_filename).exists():
-            logging.debug(f"Output already exists: {log_filename}")
+            # logging.debug(f"Output already exists: {log_filename}")
             
             # return pd.read_csv(log_filename, index_col=0)
             return log_filename
@@ -418,12 +418,12 @@ def observe_grb(
         max_time = 43200  # 12h after starting observations
 
     # check maximum time
-    logging.debug(f"Checking if visible is observed for maximum time")
+    # logging.debug(f"Checking if visible is observed for maximum time")
     visible = check_if_visible(grb, sensitivity, delay, max_time + delay)
 
     # not visible even after maximum observation time
     if not visible:
-        logging.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
+        # logging.debug(f"GRB not visible after {max_time+delay}s with {delay}s delay")
         df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
         df.to_csv(log_filename)
 
@@ -438,17 +438,17 @@ def observe_grb(
     while loop_number < 10000:
 
         loop_number += 1
-        logging.debug(
-            f"Starting new loop #{loop_number}; observation_time {observation_time}, precision {precision}"
-        )
+        # logging.debug(
+        #     f"Starting new loop #{loop_number}; observation_time {observation_time}, precision {precision}"
+        # )
 
         visible = check_if_visible(grb, sensitivity, delay, delay + observation_time)
 
         if visible:
 
-            logging.debug(
-                f"    GRB Visible at obs_time={observation_time} end_time={delay + observation_time}"
-            )
+            # logging.debug(
+            #     f"    GRB Visible at obs_time={observation_time} end_time={delay + observation_time}"
+            # )
 
             # if desired precision is reached, return results and break!
             if np.log10(precision) == np.log10(target_precision):
@@ -457,21 +457,21 @@ def observe_grb(
                 grb.end_time = round(end_time, round_precision)
                 grb.obs_time = round(observation_time, round_precision)
                 grb.seen = True
-                logging.debug(f"    obs_time={observation_time} end_time={end_time}")
+                # logging.debug(f"    obs_time={observation_time} end_time={end_time}")
                 break
 
             elif observation_time == precision:
                 # reduce precision
                 precision = 10 ** (int(np.log10(precision)) - 1)
                 observation_time = precision
-                logging.debug(f"    Updating precision to {precision}")
+                # logging.debug(f"    Updating precision to {precision}")
 
             else:  # reduce precision but add more time
                 precision = 10 ** (int(np.log10(precision)) - 1)
                 observation_time = previous_observation_time + precision
-                logging.debug(
-                    f"    Going back to {previous_observation_time} and adding more time {precision}s"
-                )
+                # logging.debug(
+                #     f"    Going back to {previous_observation_time} and adding more time {precision}s"
+                # )
 
         else:
             previous_observation_time = observation_time
@@ -481,7 +481,7 @@ def observe_grb(
     df = pd.DataFrame(grb.output(), index=[f"{grb.id}_{grb.run}"])
     df.to_csv(log_filename)
 
-    logging.debug("GRB success")
+    # logging.debug("GRB success")
 
     return log_filename
 
