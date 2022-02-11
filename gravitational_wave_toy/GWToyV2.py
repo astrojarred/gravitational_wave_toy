@@ -368,15 +368,15 @@ def observe_grb(
 
     run_stamp = f"{Path(grb_file_path).stem}_{start_time}s"
 
-    # logging.basicConfig(
-    #     level=logging.DEBUG,
-    #     format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
-    #     datefmt="%m-%d %H:%M:%S",
-    #     filename=f"{log_directory}/logs/{run_stamp}.log",
-    #     filemode="a",
-    #     force=True
-    # )
-    # logging.debug(f"Log file should be {log_directory}/logs/{run_stamp}.log")
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+        datefmt="%m-%d %H:%M:%S",
+        filename=f"{log_directory}/logs/{run_stamp}.log",
+        filemode="a",
+        force=True
+    )
+    logging.debug(f"Log file should be {log_directory}/logs/{run_stamp}.log")
 
     logging.debug(f"About to load GRB file {Path(grb_file_path).stem}")
     # load GRB data
