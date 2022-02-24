@@ -151,7 +151,7 @@ class GRB:
         # fit spectral indices
         self.fit_spectral_indices()
 
-        logger.debug(
+        logging.debug(
             f"Got GRB run{self.run}_ID{self.id}, {self.site}, z{self.zenith}, {self.angle}º"
         )
 
@@ -275,7 +275,7 @@ class GRB:
             stop_time,
         )[0]
 
-        logger.debug(f"    Fluence: {fluence}")
+        logging.debug(f"    Fluence: {fluence}")
         return fluence
     
     def output(self):
@@ -467,11 +467,11 @@ def observe_grb(
 
 def run():
 
-    logger.info("Welcome to GWToy for CTA, for use with catalogue v1.")
+    logging.info("Welcome to GWToy for CTA, for use with catalogue v1.")
 
     # load in the settings
     with open("./gw_settings.yaml") as file:
-        logger.info("Settings file found!")
+        logging.info("Settings file found!")
         parsed_yaml_file = yaml.load(file, Loader=yaml.FullLoader)
 
     catalog_directory = parsed_yaml_file["catalog"]
@@ -519,7 +519,7 @@ def run():
 
         n_grbs = last_index - first_index
 
-    logger.info(
+    logging.info(
         f"Settings:\n"
         f"  - {n_cores} cores\n"
         f"  - output filename: {output_filename}\n"
@@ -533,13 +533,13 @@ def run():
     sensitivity = Sensitivities(grbsens_files, energy_limits)
 
     # initialize ray and create remote solver
-    logger.info("Starting ray:")
+    logging.info("Starting ray:")
     ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.FATAL)
     observe_grb_remote = ray.remote(observe_grb)
 
     total_runs = n_grbs * len(time_delays)
 
-    logger.info(f"Running {total_runs} observations")
+    logging.info(f"Running {total_runs} observations")
     # set up each observation
     grb_object_ids = [
         observe_grb_remote.remote(
@@ -560,17 +560,17 @@ def run():
         pass
 
     # run the observations
-    logger.info("Done observing!\nCollecting csv filenames.")
+    logging.info("Done observing!\nCollecting csv filenames.")
     csvs = []
     for obj_id in tqdm(grb_object_ids, total=total_runs):
         this_result = ray.get(obj_id)
         if not isinstance(this_result, type(None)):
             csvs.append(this_result)
 
-    logger.info("Done. Shutting down Ray.")
+    logging.info("Done. Shutting down Ray.")
     ray.shutdown()
 
-    logger.info("Creating the combined output")
+    logging.info("Creating the combined output")
 
     # create the final pandas dataframe and write to a csv
     dfs = []
@@ -583,14 +583,14 @@ def run():
 
     final_table = pd.concat(dfs, axis=0)
 
-    logger.info("Saving files. ")
+    logging.info("Saving files. ")
     final_table.to_csv(output_filename, index=False)
-    logger.info(f"Saved csv: {output_filename}")
+    logging.info(f"Saved csv: {output_filename}")
     pickle_filename = output_filename.split(".")[0] + ".pkl"
     final_table.to_pickle(pickle_filename)
-    logger.info(f"Saved pandas dataframe: {pickle_filename}")
+    logging.info(f"Saved pandas dataframe: {pickle_filename}")
 
-    logger.info("All done!")
+    logging.info("All done!")
 
 
 if __name__ == "__main__":
