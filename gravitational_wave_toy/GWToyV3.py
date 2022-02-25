@@ -311,7 +311,7 @@ def _to_iterator(obj_ids):
 def check_if_visible(grb: GRB, sensitivity: Sensitivities, start_time, stop_time):
 
     # Interpolation and integration of the flux with time
-    average_flux = grb.get_fast_fluence(start_time, stop_time) / (
+    average_flux = grb.get_fluence(start_time, stop_time) / (
         stop_time - start_time
     )
 
