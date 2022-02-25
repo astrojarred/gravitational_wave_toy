@@ -27,7 +27,7 @@ import scipy.stats
 import yaml
 from astropy.io import fits
 from scipy import integrate
-from scipy.interpolate import interp1d, RectBivariateSpline
+from scipy.interpolate import interp1d, RectBivariateSpline, RegularGridInterpolator
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
