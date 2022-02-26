@@ -21,6 +21,7 @@ import numpy as np
 warnings.simplefilter("ignore", np.RankWarning)
 
 import pandas as pd
+
 # import ray
 import scipy
 import scipy.stats
@@ -30,6 +31,7 @@ from scipy import integrate
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
+
 # from tqdm.dask import TqdmCallback
 
 import dask
@@ -668,11 +670,9 @@ def run():
     logging.info("Starting Dask Client")
     client = Client(silence_logs=logging.ERROR)
 
-
     total_runs = n_grbs * len(time_delays)
 
     logging.info(f"Running {total_runs} observations")
-
 
     # set up input parameters
     input_params = []
@@ -680,26 +680,25 @@ def run():
     with tqdm(total=total_runs, desc="Preparing input parameters") as pbar:
         for grb_file_path in file_list[first_index:last_index]:
             for delay in time_delays:
-                input_params.append([
-                    grb_file_path,
-                    sensitivity,
-                    log_directory,
-                    delay,
-                    zeniths,  
-                    sites, 
-                    random_seed,
-                    precision,
-                ])
+                input_params.append(
+                    [
+                        grb_file_path,
+                        sensitivity,
+                        log_directory,
+                        delay,
+                        zeniths,
+                        sites,
+                        random_seed,
+                        precision,
+                    ]
+                )
                 pbar.update(1)
 
     # set up bags
     npartitions = int(np.ceil(total_runs / 40))
     logging.info(f"Setting up ~{npartitions} Dask Partitions. -> ~40 runs in each.")
 
-    b = db.from_sequence(
-        input_params, 
-        npartitions=npartitions
-    )
+    b = db.from_sequence(input_params, npartitions=npartitions)
 
     b = b.map_partitions(batch_observe_grb)
 
