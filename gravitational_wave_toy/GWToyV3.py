@@ -696,7 +696,7 @@ def run():
                 pbar.update(1)
 
     # set up bags
-    npartitions = int(np.ceil(total_runs / len(time_delays)}))
+    npartitions = int(np.ceil(total_runs / len(time_delays)))
     logging.info(f"Setting up ~{npartitions} Dask Partitions. -> ~{len(time_delays)} runs in each.")
 
     b = db.from_sequence(input_params, npartitions=npartitions)
