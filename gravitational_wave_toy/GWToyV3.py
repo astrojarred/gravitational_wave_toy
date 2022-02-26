@@ -34,8 +34,8 @@ from tqdm.dask import TqdmCallback
 
 import dask
 import dask.bag as db
-# from dask.diagnostics import ProgressBar
-# from dask.distributed import Client, progress
+from dask.diagnostics import ProgressBar
+from dask.distributed import Client, progress
 
 
 # Set up logging!
@@ -665,7 +665,9 @@ def run():
     sensitivity = Sensitivities(grbsens_files, energy_limits)
 
     # initialize ray and create remote solver
-    logging.info("Starting ray:")
+    logging.info("Starting Dask Client")
+    client = Client()
+
 
     total_runs = n_grbs * len(time_delays)
 
