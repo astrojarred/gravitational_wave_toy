@@ -10,7 +10,7 @@
 # imports
 import warnings
 
-# warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
+warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
 
 import glob
 import logging
