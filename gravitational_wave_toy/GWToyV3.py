@@ -698,7 +698,7 @@ def run():
 
     b = db.from_sequence(
         input_params, 
-        npartitions=input_params
+        npartitions=npartitions
     )
 
     b = b.map_partitions(batch_observe_grb)
