@@ -666,7 +666,7 @@ def run():
 
     # initialize ray and create remote solver
     logging.info("Starting Dask Client")
-    client = Client()
+    client = Client(silence_logs=logging.ERROR)
 
 
     total_runs = n_grbs * len(time_delays)
