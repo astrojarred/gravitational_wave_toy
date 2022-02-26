@@ -669,6 +669,7 @@ def run():
     # initialize ray and create remote solver
     logging.info("Starting Dask Client")
     client = Client(silence_logs=logging.ERROR)
+    logging.info(f"Dask Dashboard: {client.dashboard_link}")
 
     total_runs = n_grbs * len(time_delays)
 
@@ -679,7 +680,7 @@ def run():
 
     with tqdm(total=total_runs, desc="Preparing input parameters") as pbar:
         for grb_file_path in file_list[first_index:last_index]:
-            for delay in time_delays:
+            for delay in sorted(time_delays, reverse=True):
                 input_params.append(
                     [
                         grb_file_path,
@@ -695,8 +696,8 @@ def run():
                 pbar.update(1)
 
     # set up bags
-    npartitions = int(np.ceil(total_runs / 40))
-    logging.info(f"Setting up ~{npartitions} Dask Partitions. -> ~40 runs in each.")
+    npartitions = int(np.ceil(total_runs / len(time_delays)}))
+    logging.info(f"Setting up ~{npartitions} Dask Partitions. -> ~{len(time_delays)} runs in each.")
 
     b = db.from_sequence(input_params, npartitions=npartitions)
 
