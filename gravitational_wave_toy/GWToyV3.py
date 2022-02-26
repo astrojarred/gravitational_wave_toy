@@ -30,7 +30,7 @@ from scipy import integrate
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
-from tqdm.dask import TqdmCallback
+# from tqdm.dask import TqdmCallback
 
 import dask
 import dask.bag as db
@@ -704,8 +704,10 @@ def run():
     b = b.map_partitions(batch_observe_grb)
 
     logging.info("OK! Running simulations.")
-    with TqdmCallback(desc="compute"):
-        results_bag = b.compute()
+    results_bag = b.persist()
+
+    progress(results_bag)
+
     logging.info("Done!")
 
     # run the observations
