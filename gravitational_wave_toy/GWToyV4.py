@@ -31,7 +31,7 @@ from scipy.interpolate import interp1d, RectBivariateSpline, RegularGridInterpol
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
-import tinydb
+from pymongo import MongoClient
 
 
 # Set up logging!
@@ -465,10 +465,10 @@ def observe_grb_parallel(grb_file_path, sensitivity, times, zeniths, sites, rand
     return results
 
 
-def write_result(db, result_list):
+def to_mongo(db, result_list):
 
     for simulation in result_list:
-        db.insert(simulation)
+        db.insert_one(simulation)
 
 
 def run():
@@ -522,7 +522,10 @@ def run():
         n_grbs = last_index - first_index
 
     # set up the DB
-    db = tinydb.TinyDB(db_filepath)
+    # set up the DB
+    client = MongoClient()
+    db = client[db_filepath]
+    collection = db["GRB"]
 
     logging.info(
         f"Settings:\n"
@@ -563,13 +566,19 @@ def run():
     with tqdm(total=n_grbs) as pbar:
         while len(grb_object_ids):
             done_id, grb_object_ids = ray.wait(grb_object_ids)
-            write_result(db, ray.get(done_id[0]))
+            to_mongo(db, ray.get(done_id[0]))
             pbar.update(1)
 
 
-    logging.info(f"Done observing!\nResults saved to {db_filepath}.")
-    logging.info("Done. Shutting down Ray.")
+    logging.info(f"Done observing!\nResults in MongoDB at {db_filepath}.")    
+
+    logging.info("Shutting down Ray.")
     ray.shutdown()
+
+    logging.info(f"Saving to a csv.")
+    df = pd.DataFrame(list(collection.find({})))
+    df.to_csv(db_filepath + ".csv", index=False)
+    logging.info(f"CSV saved to {db_filepath+'.csv'}")
 
     logging.info("All done!")
 
