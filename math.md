@@ -12,12 +12,12 @@ $F_{\text{avg}}(t) = \frac{S(t)}{t_{\text{obs}}} = \frac{S(t)}{t - t_{\text{star
 
 2. The fluence is calculated like so,
 
-$S(t) = \int_{t_0}^t F(t) dt $
+$S(t) = \int_{t_{\text{start}}}^t F(t) dt $
 
 3. where the integral flux of the power law is
 
 $F(t) = \int_{E_{\text{min}}}^{E_{\text{max}}} F_0(t) \left(\frac{E}{E_0} \right)^{\gamma(t)} dE = F_0(t) \frac{E_0^{-\gamma(t)}}{\gamma(t) + 1} \left( E_{\text{max}}^{\gamma(t) + 1} - E_{\text{min}}^{\gamma(t) + 1} \right)  $
    - where, $F_0(t)$ is the flux in the lowest energy bin of the GRB,
    - $E_0$ is the energy of the lowest energy bin,
-   - $\gamma(t)$ the spectral index at time $t$, calculated by fitting each simulated spectra to a power law and using linear interpolation to trace the GRB spectral index evolution
+   - $\gamma(t)$ is the spectral index at time $t$, calculated by fitting, for each time bin, the simulated spectra to a power law
 
