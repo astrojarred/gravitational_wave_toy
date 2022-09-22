@@ -1,7 +1,7 @@
 ### Determining the visitibility of a simulated GRB After a certain oberservational period
 
 The goal is to determine the average flux after time $t$ and compare it to the sensitivity of the instrument.
-$\text{is\_obs:bool}(t) = F_{\text{avg}}(t) > \text{sensitivity}_\text{CTA}(t) $
+$\text{is\_obs:bool}(t) = F_{\text{avg}}(t) \gt \text{sensitivity}_\text{CTA}(t) $
 
 1. Average flux
 $F_{\text{avg}}(t) = \frac{S(t)}{t_{\text{obs}}} = \frac{S(t)}{t - t_0 } $
