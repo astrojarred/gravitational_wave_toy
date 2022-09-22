@@ -1,6 +1,6 @@
 ### Determining the visitibility of a simulated GRB After a certain oberservational period
 
-The goal is to determine the average flux after time $t$ and compare it to the sensitivity of the instrument.
+The goal is to determine the average flux after time $t$ and compare it to the sensitivity of the instrument. The flux and spectral index at any point in time are interpolated from the simulated GRB.
 
 $\text{observed:bool}(t) = F_{\text{avg}}(t) \gt \text{sensitivity}_\text{CTA}(t) $
 
