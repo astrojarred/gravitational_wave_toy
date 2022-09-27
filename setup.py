@@ -11,18 +11,12 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="gravitational_wave_toy",
-    description="A tool to simulate and plot GRB observations with CTA using ctools.",
-    version="1.1",
+    description="A tool to simulate gravitational wave follow-up observations with gamma-ray observatories.",
+    version="2.0",
     packages=["gravitational_wave_toy"],
     url="https://github.com/astrojarred/gravitational_wave_toy/",
-    author="Jarred Green (INAF-OAR/ASI), Barbara Patricelli (INAF)",
+    author="Jarred Green (MPP), Barbara Patricelli (INAF)",
     long_description=README,
     long_description_content_type="text/markdown",
     author_email="jarred.green@inaf.it",
-    entry_points={
-        "console_scripts": [
-            "gw-toy=gravitational_wave_toy.main:run",
-            "gw-plotter=gravitational_wave_toy.main:plot",
-        ]
-    },
 )
