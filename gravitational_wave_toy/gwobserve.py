@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Script name: GWToyV2.py
+# Script name: gwobserve.py
 # Author(s): B. Patricelli (barbara.patricelli@pi.infn.it),
 #            J. Green (jarred.green@inaf.it),
 #            A. Stamerra (antonio.stamerra.it)
@@ -11,29 +11,20 @@
 import warnings
 
 warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
+warnings.simplefilter("ignore", np.RankWarning)
 
-import glob
 import logging
 
 import numpy as np
-
-warnings.simplefilter("ignore", np.RankWarning)
-
 import pandas as pd
-import ray
 import scipy
 import scipy.stats
-import yaml
 from astropy.io import fits
-from scipy import integrate
-from scipy.interpolate import interp1d, RegularGridInterpolator
 from matplotlib import pyplot as plt
-from tqdm.auto import tqdm
+from scipy import integrate
+from scipy.interpolate import RegularGridInterpolator, interp1d
 
-from pymongo import MongoClient
-
-
-# Set up logging!
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 
 # classes
@@ -86,7 +77,6 @@ class Sensitivity:
         return 10 ** (slope * np.log10(t) + intercept)
 
 
-
 class GRB:
     def __init__(
         self,
@@ -128,9 +118,7 @@ class GRB:
         # fit spectral indices
         self.fit_spectral_indices()
 
-        logging.debug(
-            f"Loaded event {self.angle}º"
-        )
+        logging.debug(f"Loaded event {self.angle}º")
 
     def __repr__(self):
         return f"<GRB(run={self.run}, id={self.id})>"
@@ -165,7 +153,6 @@ class GRB:
             aspect="auto",
         )
         plt.colorbar(label="spectrum")
-        
 
     def get_spectrum(self, time, energy=None):
 
@@ -243,7 +230,7 @@ class GRB:
         plt.show()
 
     def get_integral_spectrum(self, time, first_energy_bin):
-        
+
         if not self.min_energy or not self.max_energy:
             raise ValueError("Please set min and max energy for integral spectrum.")
 
@@ -254,8 +241,8 @@ class GRB:
             self.get_flux(first_energy_bin, time=time)
             * (first_energy_bin ** (-spectral_index) / spectral_index_plus_one)
             * (
-                (self.max_energy ** spectral_index_plus_one)
-                - (self.min_energy ** spectral_index_plus_one)
+                (self.max_energy**spectral_index_plus_one)
+                - (self.min_energy**spectral_index_plus_one)
             )
         )
 
@@ -289,9 +276,9 @@ class GRB:
             "_bad_index_times",
             "index_at",
         ]
-        
+
         o = {}
-        
+
         for k, v in self.__dict__.items():
             # drop unneeded data
             if k not in keys_to_drop:
@@ -303,19 +290,19 @@ class GRB:
                 elif isinstance(v, np.ndarray):
                     o[k] = v.tolist()
                 else:
-                    o[k] = v  
-                    
+                    o[k] = v
+
         return o
-    
+
     def check_if_visible(self, sensitivity: Sensitivity, start_time, stop_time):
 
         # Interpolation and integration of the flux with time
-        average_flux = self.get_fluence(start_time, stop_time) / (stop_time - start_time)
+        average_flux = self.get_fluence(start_time, stop_time) / (
+            stop_time - start_time
+        )
 
         # calculate photon flux
-        photon_flux = sensitivity.get(
-            t=(stop_time - start_time)
-        )
+        photon_flux = sensitivity.get(t=(stop_time - start_time))
 
         visible = True if average_flux > photon_flux else False
 
@@ -324,7 +311,7 @@ class GRB:
         )
 
         return visible
-    
+
     def observe(
         self,
         sensitivity: Sensitivity,
@@ -335,14 +322,14 @@ class GRB:
         target_precision=1,
         _max_loops=10000,
     ):
-            
+
         """Modified version to increase timestep along with time size"""
 
         try:
 
             # set energy limits to match the sensitivity
             if not min_energy or not max_energy:
-                self.min_energy, self.max_energy = sensitivity.energy_limits 
+                self.min_energy, self.max_energy = sensitivity.energy_limits
 
             # start the procedure
             self.start_time = start_time
@@ -382,7 +369,9 @@ class GRB:
                         self.end_time = round(end_time, round_precision)
                         self.obs_time = round(observation_time, round_precision)
                         self.seen = True
-                        logging.debug(f"    obs_time={observation_time} end_time={end_time}")
+                        logging.debug(
+                            f"    obs_time={observation_time} end_time={end_time}"
+                        )
                         break
 
                     elif observation_time == precision:
@@ -407,7 +396,6 @@ class GRB:
             return self.output()
 
         except Exception as e:
-            print("BAD NEWS!")
             print(e)
 
             self.seen = "error"
@@ -428,4 +416,10 @@ def observe_grb(
 
     grb = GRB(grb_file_path)
 
-    return grb.observe(sensitivity, start_time, max_time=max_time, target_precision=target_precision, _max_loops=_max_loops)
+    return grb.observe(
+        sensitivity,
+        start_time,
+        max_time=max_time,
+        target_precision=target_precision,
+        _max_loops=_max_loops,
+    )
