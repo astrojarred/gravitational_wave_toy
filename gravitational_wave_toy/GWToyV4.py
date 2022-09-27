@@ -14,7 +14,6 @@ warnings.filterwarnings("ignore")  # surpress warnings when using on the command
 
 import glob
 import logging
-from pathlib import Path
 
 import numpy as np
 
@@ -27,7 +26,7 @@ import scipy.stats
 import yaml
 from astropy.io import fits
 from scipy import integrate
-from scipy.interpolate import interp1d, RectBivariateSpline, RegularGridInterpolator
+from scipy.interpolate import interp1d, RegularGridInterpolator
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 
