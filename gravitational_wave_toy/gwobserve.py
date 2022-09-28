@@ -10,11 +10,6 @@
 # imports
 import warnings
 
-warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
-warnings.simplefilter("ignore", np.RankWarning)
-
-import logging
-
 import numpy as np
 import pandas as pd
 import scipy
@@ -23,6 +18,12 @@ from astropy.io import fits
 from matplotlib import pyplot as plt
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
+
+
+warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
+warnings.simplefilter("ignore", np.RankWarning)
+
+import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
