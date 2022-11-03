@@ -8,7 +8,7 @@
 ### Special Notes
 
 - The main difference between v2 and this version is that we now add various array configurations, starting with alpha, and later omega
-- 
+- There are curves produced with and without EBL (model is Franceschini 2008)
 
 ## Simulation Parameters
 
