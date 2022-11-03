@@ -26,6 +26,7 @@ This code simulates observations of simulated gravitational wave events to deter
 
 **Inputs:**
    - An instrument sensitivity file from `grbsens`
+     - Newest version is v3 and can be found [here](CTA_sensitivity/grbsens_output_v3_Sep_2022/)
    - GW event models (currently compatible with O5 simulations)
 
 **Output**
