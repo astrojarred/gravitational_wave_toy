@@ -26,6 +26,7 @@
 - More configs to come
 - With and without EBL:
   - Franceschini 2008
+  ![EBL model comparison](models/model_comparison_EBL.png)
 - Energy Limits (different for each IRF zenith angle). The minima were selected to avoid cutoff effects for each specific IRF (see previous email from Iftach from 30 January 2020, text below). The maximum of 10TeV was selected to match the maximum energy of L. Nava's GRB catalogues.
   - z20: 30**GeV** -> 10**TeV**
   - z40: 40**GeV** -> 10**TeV**
