@@ -51,7 +51,7 @@ grb = GW.GRB("../GammaCatalog_O5/cat05_runID.fits")
 # simulate observations
 res = grb.observe(
     sensitivity=sens, 
-    start_time=600,     # starting delay in seconds
+    start_time=3600,     # starting delay in seconds
     target_precision=0.1  # numerical precision 
     )
 
