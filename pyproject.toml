@@ -5,23 +5,21 @@ description = ""
 authors = ["Jarred Green <jarred.green@inaf.it>"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-scipy = "^1.6.0"
-numpy = "^1.19.5"
-matplotlib = "^3.3.3"
-astropy = "^4.2"
-pandas = "^1.2.0"
-seaborn = "^0.11.1"
-tqdm = "^4.56.2"
-ray = "^1.3.0"
-dask = {extras = ["complete"], version = "^2022.2.1"}
-ipywidgets = "^7.6.5"
-pymongo = {extras = ["srv"], version = "^4.0.1"}
+python = ">=3.8,<3.12"
+pandas = "^1.5.0"
+numpy = "^1.23.3"
+scipy = "^1.9.1"
+matplotlib = "^3.6.0"
+seaborn = "^0.12.0"
+astropy = "^5.1"
+pandarallel = "^1.6.3"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
+ipywidgets = "^8.0.2"
 ipython = "^7.19.0"
 ipykernel = "^5.5.3"
 jupyterlab = "^3.0.15"
+
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
