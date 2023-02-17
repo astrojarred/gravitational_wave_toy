@@ -23,7 +23,13 @@
   - South_z20_0.5h
   - South_z40_0.5h
   - South_z60_0.5h
-- More configs to come
+- 6 IRFs from _prod3-v2_ (omega config):
+  - North_z20_0.5h
+  - North_z40_0.5h
+  - North_z60_0.5h
+  - South_z20_0.5h
+  - South_z40_0.5h
+  - South_z60_0.5h
 - With and without EBL:
   - Franceschini 2008
   ![EBL model comparison](models/model_comparison_EBL.png)
