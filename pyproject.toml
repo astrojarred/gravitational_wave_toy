@@ -12,7 +12,9 @@ scipy = "^1.9.1"
 matplotlib = "^3.6.0"
 seaborn = "^0.12.0"
 astropy = "^5.1"
-pandarallel = "^1.6.3"
+pymongo = "^4.3.3"
+dask = {extras = ["complete"], version = "^2023.2.0"}
+distributed = "^2023.2.0"
 
 [tool.poetry.group.dev.dependencies]
 ipywidgets = "^8.0.2"
