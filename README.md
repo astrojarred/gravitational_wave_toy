@@ -22,13 +22,13 @@
 
 ## 📝 Table of Contents
 
-- [Table of Contents](#-table-of-contents)
-- [About](#-about)
-- [Getting Started](#-getting-started)
-- [Authors](#️-authors)
-- [Instructions](#-instructions)
-  - [GW Observations](#gw-observations)
-  - [Plotting Heatmaps](#plotting-heatmaps)
+- [About](#about)
+- [Getting Started](#getting_started)
+- [Authors](#️authors)
+- [Instructions](#instructions)
+  - [GW Observations](#instructions-gw-obs)
+  - [Reading Results](#instructions-reading)
+  - [Plotting Heatmaps](#instructions-plotting)
 
 ## 🧐 About<a name = "about"></a>
 
@@ -51,23 +51,28 @@ Note: dask is only necessary to read in the output data with the `gwplot` class.
 - [Jarred Green](https://github.com/astrojarred) (jgreen at mpp.mpg.de)
 - Barbara Patricelli (barbara.patricelli at pi.infn.it)
 - Antonio Stamerra (antonio.stamerra at inaf.it)
+
 ## 🧑‍🏫 Instructions<a name = "instructions"></a>
+
 ### GW Observations<a name = "instructions-gw-obs"></a>
-**Methods:**
+
+#### Methods
 This code simulates observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory. An input GRB model and an instrument sensitivity curve specific to the desired observational conditions are provided as input. Given a delay from the onset of the event, the code uses a simple optimization algorithm to determine at which point in time (if at all) the source would be detectable by an instrument with the given sensitivity.
 
+**Note:** Details regarding the mathematics are provided in [this markdown file](math.md)
 
-**Note:** Details regarding the mathematics are provided in `math.md`
+#### Inputs
 
-**Inputs:**
-   - An instrument sensitivity file from `grbsens`
-     - Newest version is v3 and can be found [here](CTA_sensitivity/grbsens_output_v3_Sep_2022/)
-   - GW event models (currently compatible with O5 simulations)
+- An instrument sensitivity file from `grbsens`
+  - Newest version is v3 and can be found [here](CTA_sensitivity/grbsens_output_v3_Sep_2022/)
+- GW event models (currently compatible with O5 simulations)
 
-**Output**
-   - a dictionary object containing detection information and parameters of the event itself (extracted from the model)
+#### Output
 
-**Example:**
+- a dictionary object containing detection information and parameters of the event itself (extracted from the model)
+
+#### Example
+
 ```python
 from gravitational_wave_toy import gwobserve
 
@@ -85,9 +90,9 @@ grb = GW.GRB("../GammaCatalog_O5/cat05_runID.fits")
 
 # simulate observations
 res = grb.observe(
-    sensitivity=sens, 
+    sensitivity=sens,
     start_time=3600,     # starting delay in seconds
-    target_precision=0.1  # numerical precision 
+    target_precision=0.1  # numerical precision
     )
 
 # output
@@ -112,29 +117,59 @@ print(res)
 
 ```
 
+### Reading Results<a name = "instructions-reading"></a>
+
+Note: The most recent simulations for CTA for the O5 observing run are [available on the CTA XWiki](https://cta.cloud.xwiki.com/xwiki/wiki/phys/view/Transients%20WG/Chasing%20the%20counterpart%20of%20GW%20alerts%20with%20CTA/O5%20Observation%20times%20with%20gw-toy%20package/) for CTA members.
+
+It's very easy to read in the results of the `gwobserve` method when stored in csv or parquet formats. We recommend using `dask` (for very large datasets) or `pandas`. Dask has the same DataFrame functionality but is optimized for large datasets.
+
+```python
+import dask.dataframe as dd
+
+df = dd.read_parquet("/path/to/your/file.parquet")
+
+# filter if you'd like
+alpha_config = df[df["config"] == "alpha"]
+
+# convert to pandas
+pandas_df = alpha_config.compute()
+```
+
+Note: You can also use the `gwplot.GWData` introduced below to access a very easy API for filtering and plotting the data.
+
 ### Plotting Heatmaps<a name = "instructions-plotting"></a>
 
-**Methods:**
-This code creates heatmaps from the results of the `gwobserve` method which shows the ideal exposures observation times for different instruments, sensitivities, and subsets of GW events. 
+#### Methods
+This code creates heatmaps from the results of the `gwobserve` method (stored as csv or parquet files) which shows the ideal exposures observation times for different instruments, sensitivities, and subsets of GW events.
 
-**Inputs:**
-   - An output file from `gwobserve` in csv or parquet format
-   - Optional: how you would like to filter the data before creating the plots
+#### Inputs
 
-**Output**
-   - heatmaps of the results (either interactive or exported directly as an image)
+- An output file containing many observations from `gwobserve` in csv or parquet format
+- Optional: how you would like to filter the data before creating the plots
 
-**Example:**
+#### Output
+
+- heatmaps of the results (either interactive or exported directly as an image)
+
+#### Example
+
 ```python
 # import the data
 from gravitational_wave_toy import gwplot
 gws = gwplot.GWData("/path/to/data/file.parquet")  # or CSV
+
+gws.df  # view the underlying dask dataframe
 
 gws.set_filters(
    ("config", "==", "alpha"),
    ("site", "==", "south"),
    ("ebl", "==", True),
 )
+
+# optionally set a list of observation/exposure times to use on the x-axis of the heatmap
+# default is 50 log-spaced bins between 10s and 1hr
+
+# gws.set_observation_times([10, 100, 1000, 3600])
 
 ax = gws.plot(
    output_file="heatmap.png",
@@ -145,18 +180,19 @@ ax = gws.plot(
 ```
 
 Other important options to `gws.plot` include:
-   - `intput_file` (str): The path to the output file.
-   - `annotate` (bool): Whether or not to annotate the heatmap.
-   - `x_tick_labels` (list): The labels for the x-axis ticks.
-   - `y_tick_labels` (list): The labels for the y-axis ticks.
-   - `min_value` (float): The minimum value for the color scale.
-   - `max_value` (float): The maximum value for the color scale.
-   - `color_scheme` (str): The name of the color scheme to use for the heatmap.
-   - `color_scale` (str): The type of color scale to use for the heatmap.
-   - `as_percent` (bool): Whether or not to display the results as percentages.
-   - `filetype` (str): The type of file to save the plot as.
-   - `title` (str): The title for the plot.
-   - `subtitle` (str): The subtitle for the plot.
-   - `n_labels` (int): The number of labels to display on the axes.
-   - `show_only` (bool): Whether or not to show the plot instead of saving it.
-   - `return_ax` (bool): Whether or not to return the axis object.
+
+- `intput_file` (str): The path to the output file.
+- `annotate` (bool): Whether or not to annotate the heatmap.
+- `x_tick_labels` (list): The labels for the x-axis ticks.
+- `y_tick_labels` (list): The labels for the y-axis ticks.
+- `min_value` (float): The minimum value for the color scale.
+- `max_value` (float): The maximum value for the color scale.
+- `color_scheme` (str): The name of the color scheme to use for the heatmap.
+- `color_scale` (str): The type of color scale to use for the heatmap.
+- `as_percent` (bool): Whether or not to display the results as percentages.
+- `filetype` (str): The type of file to save the plot as.
+- `title` (str): The title for the plot.
+- `subtitle` (str): The subtitle for the plot.
+- `n_labels` (int): The number of labels to display on the axes.
+- `show_only` (bool): Whether or not to show the plot instead of saving it.
+- `return_ax` (bool): Whether or not to return the axis object.
