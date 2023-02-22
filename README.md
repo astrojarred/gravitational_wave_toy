@@ -1,6 +1,7 @@
 <p align="center">
   <a href="" rel="noopener">
- <img width=200px height=200px src="https://imgur.com/a/Gxz0zd9" alt="Project logo"></a>
+ <img style="width: 200px; height: 200px; max-width: 100%;" src="images/project_logo.png" src="images/project_logo.png" alt="GW Toy logo"
+ ></a>
 </p>
 
 <h3 align="center">Gravitational Wave Toy</h3>
@@ -21,16 +22,15 @@
 
 ## 📝 Table of Contents
 
-- [About](#about)
-- [Getting Started](#getting_started)
-- [Usage](#usage)
-- [Built Using](#built_using)
-- [TODO](../TODO.md)
-- [Contributing](../CONTRIBUTING.md)
-- [Authors](#authors)
-- [Acknowledgments](#acknowledgement)
+- [Table of Contents](#-table-of-contents)
+- [About](#-about)
+- [Getting Started](#-getting-started)
+- [Authors](#️-authors)
+- [Instructions](#-instructions)
+  - [GW Observations](#gw-observations)
+  - [Plotting Heatmaps](#plotting-heatmaps)
 
-## 🧐 About <a name = "about"></a>
+## 🧐 About<a name = "about"></a>
 
 An input GRB model and an instrument sensitivity curve specific to the desired observational conditions are provided as input. Given a delay from the onset of the event, the code uses a simple optimization algorithm to determine at which point in time (if at all) the source would be detectable by an instrument with the given sensitivity.
 
@@ -38,7 +38,7 @@ The purpose of this is to simualte the possibility of detecting very-high-energy
 
 For more information, check out our [ICRC proceedings from 2021](https://pos.sissa.it/395/998/pdf).
 
-## 🏁 Getting Started <a name = "getting_started"></a>
+## 🏁 Getting Started<a name = "getting_started"></a>
 
 You need a gravitational wave event catalog. If you don't have this please contact the maintainers.
 
@@ -46,13 +46,13 @@ In addition, you need a python installation and the packages outlines in `pyproj
 
 Note: dask is only necessary to read in the output data with the `gwplot` class.
 
-## ✍️ Authors <a name = "authors"></a>
+## ✍️ Authors<a name = "authors"></a>
 
 - [Jarred Green](https://github.com/astrojarred) (jgreen at mpp.mpg.de)
 - Barbara Patricelli (barbara.patricelli at pi.infn.it)
 - Antonio Stamerra (antonio.stamerra at inaf.it)
-## 🧑‍🏫 Instructions
-### GW Observations
+## 🧑‍🏫 Instructions<a name = "instructions"></a>
+### GW Observations<a name = "instructions-gw-obs"></a>
 **Methods:**
 This code simulates observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory. An input GRB model and an instrument sensitivity curve specific to the desired observational conditions are provided as input. Given a delay from the onset of the event, the code uses a simple optimization algorithm to determine at which point in time (if at all) the source would be detectable by an instrument with the given sensitivity.
 
@@ -112,7 +112,7 @@ print(res)
 
 ```
 
-### GWPlotter: Create your heatmaps
+### Plotting Heatmaps<a name = "instructions-plotting"></a>
 
 **Methods:**
 This code creates heatmaps from the results of the `gwobserve` method which shows the ideal exposures observation times for different instruments, sensitivities, and subsets of GW events. 
