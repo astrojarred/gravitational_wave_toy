@@ -207,7 +207,7 @@ class GWData:
 
     def plot(
         self,
-        output_file=None,
+        intput_file=None,
         annotate=False,
         x_tick_labels=None,
         y_tick_labels=None,
@@ -220,31 +220,59 @@ class GWData:
         title=None,
         subtitle=None,
         n_labels=10,
-        filename_suffix="",
         show_only=False,
+        return_ax=True,
     ) -> None:
-        
-        sns.set()
+        """
+        Generates a heatmap of the data stored in the instance of the class.
 
+        Args:
+            intput_file (str): The path to the output file.
+            annotate (bool): Whether or not to annotate the heatmap.
+            x_tick_labels (list): The labels for the x-axis ticks.
+            y_tick_labels (list): The labels for the y-axis ticks.
+            min_value (float): The minimum value for the color scale.
+            max_value (float): The maximum value for the color scale.
+            color_scheme (str): The name of the color scheme to use for the heatmap.
+            color_scale (str): The type of color scale to use for the heatmap.
+            as_percent (bool): Whether or not to display the results as percentages.
+            filetype (str): The type of file to save the plot as.
+            title (str): The title for the plot.
+            subtitle (str): The subtitle for the plot.
+            n_labels (int): The number of labels to display on the axes.
+            show_only (bool): Whether or not to show the plot instead of saving it.
+            return_ax (bool): Whether or not to return the axis object.
+            
+        Returns:
+            Either `matplotlib.axes._axes.Axes` or None
+        """
+        # Get the results dataframe from the class.
         df = self.results
         df.rename(columns={"obs_time": "exposure time"}, inplace=True)
 
+        # Set the plot style using seaborn.
         sns.set_theme()
 
+        # Convert the results to percentages, if requested.
         if as_percent:
             df["percent_seen"] = df["percent_seen"] * 100
 
+        # Pivot the data so that it can be plotted as a heatmap.
         pivot = df.pivot("exposure time", "delay", "percent_seen").astype(float)
 
+        # Create a new figure and axis.
         f, ax = plt.subplots(figsize=(9, 9))
 
+        # Set the colorbar options.
         cbar_kws = {"label": "Percentage of GRBs detected", "orientation": "vertical"}
 
+        # Set the color scale if logarithmic scale is selected.
         if color_scale == "log":
             from matplotlib.colors import LogNorm
 
             color_scale = LogNorm(vmin=min_value, vmax=max_value)
 
+        # Set the x-axis tick labels.
         if not x_tick_labels:
             x_delays = np.sort(self._results.delay.unique())
             label_delays = x_delays[::int(len(x_delays) / n_labels)]
@@ -252,51 +280,37 @@ class GWData:
             if x_delays[-1] != label_delays[-1]:
                 label_delays = np.append(label_delays, x_delays[-1])
                 x_tick_pos = np.append(x_tick_pos, len(x_delays) - 1)
-            # x_tick_labels = [self._convert_time(x) if x in label_delays else "" for x in x_delays]
             x_tick_labels = [self._convert_time(x) for x in label_delays]
+
+        # Set the y-axis tick labels.
         if not y_tick_labels:
             label_obs_times = self.observation_times[::int(len(self.observation_times) / n_labels)]
             y_tick_pos = np.arange(len(self.observation_times))[::int(len(self.observation_times) / n_labels)]
             if self.observation_times[-1] != label_obs_times[-1]:
                 label_obs_times = np.append(label_obs_times, self.observation_times[-1])
                 y_tick_pos = np.append(y_tick_pos, len(self.observation_times) - 1)
-            # y_tick_labels = [self._convert_time(x) if x in label_obs_times else "" for x in self.observation_times]
             y_tick_labels = [self._convert_time(x) for x in label_obs_times]
 
-        if annotate:
-            heatmap = sns.heatmap(
-                pivot,
-                annot=True,
-                fmt=".0f",
-                linewidths=0.5,
-                ax=ax,
-                cmap=color_scheme,
-                vmin=min_value,
-                vmax=max_value,
-                xticklabels=x_tick_labels,
-                yticklabels=y_tick_labels,
-                cbar_kws=cbar_kws,
-                # norm=color_scale,
-                square=True,
-            )
-        else:
-            heatmap = sns.heatmap(
-                pivot,
-                annot=False,
-                ax=ax,
-                cmap=color_scheme,
-                vmin=min_value,
-                vmax=max_value,
-                xticklabels=x_tick_labels,
-                yticklabels=y_tick_labels,
-                cbar_kws=cbar_kws,
-                # norm=color_scale,
-                square=True,
-            )
+        # Create the heatmap, with or without annotations.
+        heatmap = sns.heatmap(
+            pivot,
+            annot=True if annotate else None,
+            fmt=".0f" if annotate else ".2g",
+            linewidths=0.5 if annotate else 0,
+            ax=ax,
+            cmap=color_scheme,
+            vmin=min_value,
+            vmax=max_value,
+            xticklabels=x_tick_labels,
+            yticklabels=y_tick_labels,
+            cbar_kws=cbar_kws,
+            square=True,
+        )
 
+        # Invert the y-axis so that the plot is oriented correctly.
         heatmap.invert_yaxis()
-        # heatmap.set_facecolor("#1C1C1C")
 
+        # Set the title and axis labels.
         sites = self.df["site"].unique().compute()
         if len(sites) > 1:
             site = "CTA N + S"
@@ -322,21 +336,22 @@ class GWData:
             
         plt.xlabel("$t_{0}$", fontsize=16)
         plt.ylabel("$t_{\mathrm{exp}}$", fontsize=16)
-        # Set tick positions and labels
+
+        # Set the tick positions and labels for the x and y axes.
         ax.set_xticks(x_tick_pos, x_tick_labels, rotation=45, fontsize=12)
-        #ax.set_xticklabels(x_tick_labels, rotation=45, fontsize=12)
         ax.set_yticks(y_tick_pos, y_tick_labels, fontsize=12)
-        #ax.set_yticklabels(y_tick_labels, fontsize=12)
+
+        # Set the tick parameters for both axes.
         plt.tick_params(axis="both", length=5, color="black", direction="out", bottom=True, left=True)
 
-
+        # Get the figure and save it, or show it if requested.
         fig = heatmap.get_figure()
 
         if not show_only:
-            # output_file = f"{output_dir}/GW_{site.replace(' ','_')}_{zenith.replace(' ','_')}{filename_suffix}.{filetype}"
-            fig.savefig(output_file + f".{filetype}")
-            # print(f"Saved plot {output_file}")
+            fig.savefig(intput_file + f".{filetype}")
         else:
             plt.show()
 
-        return ax
+        # Return the axis object if requested:
+        if return_ax:
+            return ax
