@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gw_toy"
-version = "0.1.0"
+version = "2.0"
 description = ""
 authors = ["Jarred Green <jgreen@mpp.mpg.de>"]
 
