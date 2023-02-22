@@ -1,22 +1,57 @@
-# Gravitational Wave Toy
+<p align="center">
+  <a href="" rel="noopener">
+ <img width=200px height=200px src="https://imgur.com/a/Gxz0zd9" alt="Project logo"></a>
+</p>
 
-Author(s): 
-- B. Patricelli (barbara.patricelli at pi.infn.it),
-- J. Green (jgreen at mpp.mpg.de),
-- A. Stamerra (antonio.stamerra at inaf.it)
+<h3 align="center">Gravitational Wave Toy</h3>
 
-The purpose of this is to simualte the possibility of detecting very-high-energy electromagnetic counterparts to gravitational wave events events.
-      
-## Requirements
-Set up a python environment using `conda` or `poetry` which includes the following packages:
-- python (3.8+)
-- numpy
-- pandas
-- scipy
-- astropy
-- matplotlib
+<div align="center">
 
-## Instructions
+[![Status](https://img.shields.io/badge/status-active-success.svg)]()
+[![GitHub Issues](https://img.shields.io/github/issues/astrojarred/gravitational_wave_toy.svg)](https://github.com/astrojarred/gravitational_wave_toy/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/astrojarred/gravitational_wave_toy.svg)](https://github.com/astrojarred/gravitational_wave_toy/pulls)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
+
+</div>
+
+---
+
+<p align="center"> The purpose of this is to simualte the possibility of detecting very-high-energy electromagnetic counterparts to gravitational wave events events. The package can also create heatmaps for observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory.
+</p>
+
+## 📝 Table of Contents
+
+- [About](#about)
+- [Getting Started](#getting_started)
+- [Usage](#usage)
+- [Built Using](#built_using)
+- [TODO](../TODO.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Authors](#authors)
+- [Acknowledgments](#acknowledgement)
+
+## 🧐 About <a name = "about"></a>
+
+An input GRB model and an instrument sensitivity curve specific to the desired observational conditions are provided as input. Given a delay from the onset of the event, the code uses a simple optimization algorithm to determine at which point in time (if at all) the source would be detectable by an instrument with the given sensitivity.
+
+The purpose of this is to simualte the possibility of detecting very-high-energy electromagnetic counterparts to gravitational wave events events. The package can also create heatmaps for observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory.
+
+For more information, check out our [ICRC proceedings from 2021](https://pos.sissa.it/395/998/pdf).
+
+## 🏁 Getting Started <a name = "getting_started"></a>
+
+You need a gravitational wave event catalog. If you don't have this please contact the maintainers.
+
+In addition, you need a python installation and the packages outlines in `pyproject.toml`. We recommend using `poetry` or `conda` to manage your python environment.
+
+Note: dask is only necessary to read in the output data with the `gwplot` class.
+
+## ✍️ Authors <a name = "authors"></a>
+
+- [Jarred Green](https://github.com/astrojarred) (jgreen at mpp.mpg.de)
+- Barbara Patricelli (barbara.patricelli at pi.infn.it)
+- Antonio Stamerra (antonio.stamerra at inaf.it)
+## 🧑‍🏫 Instructions
 ### GW Observations
 **Methods:**
 This code simulates observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory. An input GRB model and an instrument sensitivity curve specific to the desired observational conditions are provided as input. Given a delay from the onset of the event, the code uses a simple optimization algorithm to determine at which point in time (if at all) the source would be detectable by an instrument with the given sensitivity.
@@ -77,15 +112,51 @@ print(res)
 
 ```
 
-### GW Toy: Create the detectability matrix
-**Note:** This is not working on the main branch at the moment
-1. Edit all parameters in `gw_settings.yaml`
-   - You will need the output sensitivities of `grbsens`
-2. Run `python GWToy.py`
-3. The output will be saved both as a csv and as a pandas pickle
-
 ### GWPlotter: Create your heatmaps
-**Note:** This is not working on the main branch at the moment
-1. Edit the parameters in `plot_settings.yaml`
-2. Run `python GWPlotter.py`
-3. The plots will be saved as `png` files in the directory specified in the settings.
+
+**Methods:**
+This code creates heatmaps from the results of the `gwobserve` method which shows the ideal exposures observation times for different instruments, sensitivities, and subsets of GW events. 
+
+**Inputs:**
+   - An output file from `gwobserve` in csv or parquet format
+   - Optional: how you would like to filter the data before creating the plots
+
+**Output**
+   - heatmaps of the results (either interactive or exported directly as an image)
+
+**Example:**
+```python
+# import the data
+from gravitational_wave_toy import gwplot
+gws = gwplot.GWData("/path/to/data/file.parquet")  # or CSV
+
+gws.set_filters(
+   ("config", "==", "alpha"),
+   ("site", "==", "south"),
+   ("ebl", "==", True),
+)
+
+ax = gws.plot(
+   output_file="heatmap.png",
+   title="CTA South, alpha configuration, with EBL",
+   min_value=0,
+   max_value=1,
+)
+```
+
+Other important options to `gws.plot` include:
+   - `intput_file` (str): The path to the output file.
+   - `annotate` (bool): Whether or not to annotate the heatmap.
+   - `x_tick_labels` (list): The labels for the x-axis ticks.
+   - `y_tick_labels` (list): The labels for the y-axis ticks.
+   - `min_value` (float): The minimum value for the color scale.
+   - `max_value` (float): The maximum value for the color scale.
+   - `color_scheme` (str): The name of the color scheme to use for the heatmap.
+   - `color_scale` (str): The type of color scale to use for the heatmap.
+   - `as_percent` (bool): Whether or not to display the results as percentages.
+   - `filetype` (str): The type of file to save the plot as.
+   - `title` (str): The title for the plot.
+   - `subtitle` (str): The subtitle for the plot.
+   - `n_labels` (int): The number of labels to display on the axes.
+   - `show_only` (bool): Whether or not to show the plot instead of saving it.
+   - `return_ax` (bool): Whether or not to return the axis object.
