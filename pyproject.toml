@@ -15,6 +15,8 @@ astropy = "^5.1"
 pymongo = "^4.3.3"
 dask = {extras = ["complete"], version = "^2023.2.0"}
 distributed = "^2023.2.0"
+tqdm = "^4.64.1"
+pyarrow = "^11.0.0"
 
 [tool.poetry.group.dev.dependencies]
 ipywidgets = "^8.0.2"
