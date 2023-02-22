@@ -196,3 +196,7 @@ Other important options to `gws.plot` include:
 - `n_labels` (int): The number of labels to display on the axes.
 - `show_only` (bool): Whether or not to show the plot instead of saving it.
 - `return_ax` (bool): Whether or not to return the axis object.
+
+
+---
+Logo credit: [smalllikeart](https://www.flaticon.com/authors/smalllikeart)
