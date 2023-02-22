@@ -2,7 +2,7 @@
 name = "gw_toy"
 version = "0.1.0"
 description = ""
-authors = ["Jarred Green <jarred.green@inaf.it>"]
+authors = ["Jarred Green <jgreen@mpp.mpg.de>"]
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
@@ -12,9 +12,7 @@ scipy = "^1.9.1"
 matplotlib = "^3.6.0"
 seaborn = "^0.12.0"
 astropy = "^5.1"
-pymongo = "^4.3.3"
 dask = {extras = ["complete"], version = "^2023.2.0"}
-distributed = "^2023.2.0"
 tqdm = "^4.64.1"
 pyarrow = "^11.0.0"
 
