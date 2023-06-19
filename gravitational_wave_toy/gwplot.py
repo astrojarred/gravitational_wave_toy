@@ -6,6 +6,7 @@ import pandas as pd
 import dask.dataframe as dd
 import matplotlib.pyplot as plt
 
+
 class GWData:
     """
     A class for reading and filtering gravitational wave data stored in Parquet or CSV format.
@@ -91,11 +92,11 @@ class GWData:
             A string representation of the GWData object.
         """
         return f"GWData({self._input_file})"
-        
+
     @property
     def _default_delays(self):
         return [round(i) for i in np.logspace(1, np.log10(7 * 24 * 3600), 50)]
-    
+
     @property
     def _default_obs_times(self):
         return np.logspace(1, np.log10(1 * 3600 + 0.1), 50, dtype=int)
@@ -160,21 +161,34 @@ class GWData:
                 )
             if op == "in":
                 # Filter using isin for list values
-                self._current_data = self._current_data[self._current_data[column].isin(value)]
+                self._current_data = self._current_data[
+                    self._current_data[column].isin(value)
+                ]
             elif op == "not in" or op == "notin":
-                self._current_data = self._current_data[~self._current_data[column].isin(value)]
+                self._current_data = self._current_data[
+                    ~self._current_data[column].isin(value)
+                ]
             elif op == "==" or op == "=":
                 # Filter using == for non-list values
-                self._current_data = self._current_data[self._current_data[column] == value]
+                self._current_data = self._current_data[
+                    self._current_data[column] == value
+                ]
             elif op == "<":
-                self._current_data = self._current_data[self._current_data[column] < value]
+                self._current_data = self._current_data[
+                    self._current_data[column] < value
+                ]
             elif op == ">":
-                self._current_data = self._current_data[self._current_data[column] > value]
+                self._current_data = self._current_data[
+                    self._current_data[column] > value
+                ]
             elif op == "<=":
-                self._current_data = self._current_data[self._current_data[column] <= value]
+                self._current_data = self._current_data[
+                    self._current_data[column] <= value
+                ]
             elif op == ">=":
-                self._current_data = self._current_data[self._current_data[column] >= value]
-
+                self._current_data = self._current_data[
+                    self._current_data[column] >= value
+                ]
 
     def set_observation_times(self, obs_times: list) -> None:
         """
@@ -193,7 +207,7 @@ class GWData:
         self._results = pd.DataFrame(
             columns=["delay", "obs_time", "n_seen", "total", "percent_seen"]
         )
-        
+
     @staticmethod
     def _convert_time(seconds: float):
         if seconds < 60:
@@ -207,7 +221,8 @@ class GWData:
 
     def plot(
         self,
-        intput_file=None,
+        ax=None,
+        output_file=None,
         annotate=False,
         x_tick_labels=None,
         y_tick_labels=None,
@@ -216,18 +231,17 @@ class GWData:
         color_scheme="mako",
         color_scale=None,
         as_percent=False,
-        filetype="png",
         title=None,
         subtitle=None,
         n_labels=10,
-        show_only=False,
+        square=True,
         return_ax=True,
     ) -> None:
         """
         Generates a heatmap of the data stored in the instance of the class.
 
         Args:
-            intput_file (str): The path to the output file.
+            output_file (str): The path to the output file.
             annotate (bool): Whether or not to annotate the heatmap.
             x_tick_labels (list): The labels for the x-axis ticks.
             y_tick_labels (list): The labels for the y-axis ticks.
@@ -236,13 +250,13 @@ class GWData:
             color_scheme (str): The name of the color scheme to use for the heatmap.
             color_scale (str): The type of color scale to use for the heatmap.
             as_percent (bool): Whether or not to display the results as percentages.
-            filetype (str): The type of file to save the plot as.
             title (str): The title for the plot.
             subtitle (str): The subtitle for the plot.
             n_labels (int): The number of labels to display on the axes.
+            square (bool): If True, set the Axes aspect to “equal” so each cell will be square-shaped.
             show_only (bool): Whether or not to show the plot instead of saving it.
             return_ax (bool): Whether or not to return the axis object.
-            
+
         Returns:
             Either `matplotlib.axes._axes.Axes` or None
         """
@@ -261,7 +275,8 @@ class GWData:
         pivot = df.pivot("exposure time", "delay", "percent_seen").astype(float)
 
         # Create a new figure and axis.
-        f, ax = plt.subplots(figsize=(9, 9))
+        if ax is None:
+            f, ax = plt.subplots(figsize=(9, 9))
 
         # Set the colorbar options.
         cbar_kws = {"label": "Percentage of GRBs detected", "orientation": "vertical"}
@@ -275,8 +290,8 @@ class GWData:
         # Set the x-axis tick labels.
         if not x_tick_labels:
             x_delays = np.sort(self._results.delay.unique())
-            label_delays = x_delays[::int(len(x_delays) / n_labels)]
-            x_tick_pos = np.arange(len(x_delays))[::int(len(x_delays) / n_labels)]
+            label_delays = x_delays[:: int(len(x_delays) / n_labels)]
+            x_tick_pos = np.arange(len(x_delays))[:: int(len(x_delays) / n_labels)]
             if x_delays[-1] != label_delays[-1]:
                 label_delays = np.append(label_delays, x_delays[-1])
                 x_tick_pos = np.append(x_tick_pos, len(x_delays) - 1)
@@ -284,8 +299,12 @@ class GWData:
 
         # Set the y-axis tick labels.
         if not y_tick_labels:
-            label_obs_times = self.observation_times[::int(len(self.observation_times) / n_labels)]
-            y_tick_pos = np.arange(len(self.observation_times))[::int(len(self.observation_times) / n_labels)]
+            label_obs_times = self.observation_times[
+                :: int(len(self.observation_times) / n_labels)
+            ]
+            y_tick_pos = np.arange(len(self.observation_times))[
+                :: int(len(self.observation_times) / n_labels)
+            ]
             if self.observation_times[-1] != label_obs_times[-1]:
                 label_obs_times = np.append(label_obs_times, self.observation_times[-1])
                 y_tick_pos = np.append(y_tick_pos, len(self.observation_times) - 1)
@@ -304,7 +323,7 @@ class GWData:
             xticklabels=x_tick_labels,
             yticklabels=y_tick_labels,
             cbar_kws=cbar_kws,
-            square=True,
+            square=square,
         )
 
         # Invert the y-axis so that the plot is oriented correctly.
@@ -323,33 +342,43 @@ class GWData:
             for z in zeniths[1:]:
                 zenith += f"/z{z}"
 
-        if title:
-            plt.title(title)
-        if subtitle:
-            plt.title(
+        if title == False:
+            pass
+        elif subtitle:
+            ax.title(
                 f"GRB Detectability for {site}, {zenith}: {subtitle} (n={self._results.groupby('delay').total.first().iloc[0]})"
             )
+        elif title:
+            ax.title(title)
         else:
-            plt.title(
+            ax.title(
                 f"GRB Detectability for {site}, {zenith} (n={self._results.groupby('delay').total.first().iloc[0]})"
             )
-            
-        plt.xlabel("$t_{0}$", fontsize=16)
-        plt.ylabel("$t_{\mathrm{exp}}$", fontsize=16)
 
         # Set the tick positions and labels for the x and y axes.
+        ax.set_xlabel("$t_{0}$", fontsize=16)
+        ax.set_ylabel("$t_{\mathrm{exp}}$", fontsize=16)
         ax.set_xticks(x_tick_pos, x_tick_labels, rotation=45, fontsize=12)
         ax.set_yticks(y_tick_pos, y_tick_labels, fontsize=12)
 
         # Set the tick parameters for both axes.
-        plt.tick_params(axis="both", length=5, color="black", direction="out", bottom=True, left=True)
+        ax.tick_params(
+            axis="both",
+            length=5,
+            color="black",
+            direction="out",
+            bottom=True,
+            left=True,
+        )
 
         # Get the figure and save it, or show it if requested.
         fig = heatmap.get_figure()
 
-        if not show_only:
-            fig.savefig(intput_file + f".{filetype}")
-        else:
+        print("ax, output_file, filetype", ax, output_file)
+        if output_file:
+            print("saving")
+            fig.savefig(output_file, bbox_inches="tight", pad_inches=0)
+        elif not ax:
             plt.show()
 
         # Return the axis object if requested:
