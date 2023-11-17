@@ -2,8 +2,10 @@
 .idea/
 from_server/
 poetry.lock
-missing_merges/
-
+missing_mergers/
+debug_results/
+gravitational_wave_toy/old/
+notebooks/celery-test/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
