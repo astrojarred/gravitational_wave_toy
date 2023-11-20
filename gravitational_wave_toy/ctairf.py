@@ -54,6 +54,9 @@ class irf(BaseModel):
 
         return "\n".join([title, filepath, config, site, zenith, duration, azimuth])
 
+    def __fspath__(self):
+        return str(self.filepath)
+
 
 class IRFHouse(BaseModel):
     base_directory: Path | str
