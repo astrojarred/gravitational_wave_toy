@@ -124,10 +124,10 @@ class SensitivityGammapy:
         index: float,
         amplitude: u.Quantity,  # [GeV-1 cm-2 s-1]
         reference: u.Quantity | None = None,  # [GeV]
-        mode="photon_flux",  # "photon_flux" or "senstivity"
+        mode="photon_flux",  # "photon_flux" or "senstivity" or "table"
         **kwargs,
     ) -> float:
-        if mode not in ["photon_flux", "sensitivity"]:
+        if mode not in ["photon_flux", "sensitivity", "table"]:
             raise ValueError(f"mode must be 'photon_flux' or 'sensitivity', got {mode}")
 
         if t.unit.physical_type != "time":
@@ -162,13 +162,15 @@ class SensitivityGammapy:
         self._last_table = sens_table
 
         e2dnde = sens_table["e2dnde"].data[0] * sens_table["e2dnde"].unit
-        e2dnde = e2dnde.to("GeV / (cm2 s)")
+        e2dnde = e2dnde.to("erg / (cm2 s)")
 
         energy = sens_table["energy"].data[0] * sens_table["energy"].unit
         energy = energy.to("GeV")
 
         if mode == "photon_flux":
             return e2dnde / energy
+        elif mode == "table":
+            return sens_table
         else:
             return e2dnde
 
@@ -176,10 +178,10 @@ class SensitivityGammapy:
 def gamma_sens(
     irf: str | Path,
     observatory: str,
-    duration: u.Quantity,
-    radius: u.Quantity,
-    min_energy: u.Quantity,
-    max_energy: u.Quantity,
+    duration: int,
+    radius: float,
+    min_energy: float,
+    max_energy: float,
     model: SpectralModel | str | None = None,
     source_ra: float = 83.6331,
     source_dec: float = 22.0145,
@@ -204,9 +206,9 @@ def gamma_sens(
     radius : float
         On region radius in degrees
     e_min : float
-        Minimum energy in GeV
+        Minimum energy in TeV
     e_max : float
-        Maximum energy in GeV
+        Maximum energy in TeV
     sigma : float
         Minimum significance
     bins : int
@@ -230,23 +232,9 @@ def gamma_sens(
     if not irf.exists():
         raise FileNotFoundError(f"IRF file not found: {irf}")
 
-    if min_energy.unit.physical_type != "energy":
-        raise ValueError(f"e_min must be an energy quantity, got {min_energy}")
-    if max_energy.unit.physical_type != "energy":
-        raise ValueError(f"e_max must be an energy quantity, got {max_energy}")
-    if radius.unit.physical_type != "angle":
-        raise ValueError(f"radius must be an angle quantity, got {radius}")
-    if duration.unit.physical_type != "time":
-        raise ValueError(f"duration must be a time quantity, got {duration}")
-
-    min_energy = min_energy.to("GeV")
-    max_energy = max_energy.to("GeV")
-    radius = radius.to("deg")
-    duration = duration.to("s")
-
     # Define energy axis
     energy_axis = MapAxis.from_energy_bounds(
-        min_energy, max_energy, nbin=bins, unit=u.GeV, name="energy"
+        min_energy, max_energy, bins, unit=u.TeV, name="energy"
     )
 
     energy_axis_true = MapAxis.from_energy_bounds(
@@ -277,9 +265,8 @@ def gamma_sens(
     # Define observation
     location = observatory_locations[observatory]
     # pointing = SkyCoord("0 deg", "0 deg")
-    livetime = duration
-    obs = Observation.create(
-        pointing=pointing, irfs=irfs, livetime=livetime, location=location
+    obs: Observation = Observation.create(
+        pointing=pointing, irfs=irfs, livetime=duration, location=location
     )
 
     # Create dataset
@@ -295,7 +282,7 @@ def gamma_sens(
 
     # Define on region radius
     on_radii = obs.psf.containment_radius(
-        energy_true=energy_axis.center, offset=offset * u.deg, fraction=containment
+        energy_true=energy_axis.center, offset=offset*u.deg, fraction=containment
     )
 
     factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
