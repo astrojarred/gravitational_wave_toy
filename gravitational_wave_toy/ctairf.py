@@ -2,16 +2,70 @@ from pathlib import Path
 from typing import Literal, Optional
 from pydantic import BaseModel, validator
 from itertools import product
+from enum import Enum, IntEnum
 
 
-class irf(BaseModel):
+class Site(Enum):
+    south = "south"
+    north = "north"
+
+
+class Configuration(Enum):
+    alpha = "alpha"
+    omega = "omega"
+
+
+class Azimuth(Enum):
+    south = "south"
+    north = "north"
+    average = "average"
+
+
+class Zenith(IntEnum):
+    z20 = 20
+    z40 = 40
+    z60 = 60
+
+
+class Duration(IntEnum):
+    t1800 = 1800
+    t18000 = 18000
+    t180000 = 180000
+
+
+class IRF(BaseModel):
+    """
+    Represents the Instrument Response Function (IRF) for the CTA (Cherenkov Telescope Array).
+
+    Attributes:
+        base_directory (Optional[Path]): The base directory for the IRF files.
+        filepath (Path): The path to the IRF file.
+        configuration (Configuration): The configuration of the IRF.
+        site (Site): The site where the IRF is located.
+        duration (int): The duration of the IRF in seconds.
+        zenith (Optional[Zenith]): The zenith angle of the IRF.
+        azimuth (Azimuth): The azimuth angle of the IRF.
+        has_nsb (bool): Indicates whether the IRF includes Night Sky Background (NSB) data.
+        n_sst (Optional[int]): The number of Single-Size Telescopes (SSTs) in the IRF.
+        n_mst (Optional[int]): The number of Medium-Size Telescopes (MSTs) in the IRF.
+        n_lst (Optional[int]): The number of Large-Size Telescopes (LSTs) in the IRF.
+        version (Optional[str]): The version of the IRF.
+
+    Methods:
+        validate_base_directory(cls, base_directory): Validates the base directory path.
+        validate_filepath(cls, filepath, values): Validates the filepath and resolves it relative to the base directory if provided.
+        __repr__(self): Returns a string representation of the IRF.
+        __fspath__(self): Returns the filepath as a string.
+
+    """
+
     base_directory: Optional[Path] = None
     filepath: Path
-    configuration: Literal["alpha", "omega"]
-    site: Literal["north", "south"]
+    configuration: Configuration
+    site: Site
     duration: int
-    zenith: Optional[int | float] = None
-    azimuth: Literal["north", "south", "average"]
+    zenith: Optional[Zenith] = None
+    azimuth: Azimuth
     has_nsb: bool = False
     n_sst: Optional[int] = None
     n_mst: Optional[int] = None
@@ -20,6 +74,18 @@ class irf(BaseModel):
 
     @validator("base_directory", pre=True)
     def validate_base_directory(cls, base_directory):
+        """
+        Validates the base directory path.
+
+        Args:
+            base_directory (str): The path to the base directory.
+
+        Returns:
+            str: The validated base directory path.
+
+        Raises:
+            ValueError: If the base directory does not exist or is not a directory.
+        """
         if base_directory:
             base_directory = Path(base_directory)
             if not base_directory.exists():
@@ -32,6 +98,19 @@ class irf(BaseModel):
 
     @validator("filepath", pre=True)
     def validate_filepath(cls, filepath, values):
+        """
+        Validates the given filepath by checking if it exists.
+
+        Args:
+            filepath (str): The filepath to be validated.
+            values (dict): A dictionary containing additional values.
+
+        Returns:
+            Path: The validated filepath.
+
+        Raises:
+            ValueError: If the filepath does not exist.
+        """
         base_directory = values.get("base_directory")
 
         filepath = Path(filepath)
@@ -87,10 +166,10 @@ class IRFHouse(BaseModel):
 
     def get_alpha_v0p1(
         self,
-        site: Literal["north", "south"],
-        zenith: Literal[20, 40, 60],
-        duration: Literal[1800, 18000, 180000],
-        azimuth: Literal["north", "south", "average"] = "average",
+        site: Site,
+        zenith: Zenith,
+        duration: Duration,
+        azimuth: Azimuth = "average",
     ):
         site_string = site.capitalize()
         azimuth_string = f"{azimuth.capitalize()}Az"
@@ -107,7 +186,7 @@ class IRFHouse(BaseModel):
         else:
             raise ValueError(f"Invalid site {site}")
 
-        return irf(
+        return IRF(
             base_directory=self.base_directory,
             filepath=f"prod5-v0.1/fits/CTA-Performance-prod5-v0.1-{site_string}-{zenith}deg.FITS/Prod5-{site_string}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.1.fits.gz",
             configuration="alpha",
@@ -164,7 +243,7 @@ class IRFHouse(BaseModel):
         else:
             raise ValueError(f"Invalid configuration {configuration} for site {site}")
 
-        return irf(
+        return IRF(
             base_directory=self.base_directory,
             filepath=f"prod5-v0.2/fits/Prod5-{site_string}{'-NSB5x' if nsb else ''}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.2.fits.gz",
             configuration="alpha",
@@ -213,7 +292,7 @@ class IRFHouse(BaseModel):
         else:
             raise ValueError(f"Invalid site {site}")
 
-        return irf(
+        return IRF(
             base_directory=self.base_directory,
             filepath=f"prod3b-v2/fits/caldb/data/cta/prod3b-v2/bcf/{site_string}_z{zenith}{azimuth_string}_{duration_string}h/irf_file.fits",
             configuration="alpha",
@@ -296,7 +375,7 @@ class IRFHouse(BaseModel):
             ):
                 continue
             try:
-                irf = self.get_irf(
+                self.get_irf(
                     site=site,
                     configuration=configuration,
                     zenith=zenith,
