@@ -1,3 +1,4 @@
+from math import e
 from pathlib import Path
 
 import astropy.units as u
@@ -178,10 +179,10 @@ class SensitivityGammapy:
 def gamma_sens(
     irf: str | Path,
     observatory: str,
-    duration: int,
-    radius: float,
-    min_energy: float,
-    max_energy: float,
+    duration: u.Quantity,
+    radius: u.Quantity,
+    min_energy: u.Quantity,
+    max_energy: u.Quantity,
     model: SpectralModel | str | None = None,
     source_ra: float = 83.6331,
     source_dec: float = 22.0145,
@@ -231,6 +232,25 @@ def gamma_sens(
     irf = Path(irf)
     if not irf.exists():
         raise FileNotFoundError(f"IRF file not found: {irf}")
+    
+    # check units
+    if duration.unit.physical_type != "time":
+        raise ValueError(f"duration must be a time quantity, got {duration}")
+    else:
+        duration = duration.to("s")
+    if radius.unit.physical_type != "angle":
+        raise ValueError(f"radius must be an angle quantity, got {radius}")
+    else:
+        radius = radius.to("deg")
+    if min_energy.unit.physical_type != "energy":
+        raise ValueError(f"min_energy must be an energy quantity, got {min_energy}")
+    else:
+        min_energy = min_energy.to("TeV")
+    if max_energy.unit.physical_type != "energy":
+        raise ValueError(f"max_energy must be an energy quantity, got {max_energy}")
+    else:
+        max_energy = max_energy.to("TeV")
+    
 
     # Define energy axis
     energy_axis = MapAxis.from_energy_bounds(
