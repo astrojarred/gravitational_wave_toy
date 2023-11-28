@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import astropy.units as u
 
@@ -224,7 +225,7 @@ class GRB:
             "cm-2 s-1 GeV-1"
         )
 
-    def show_spectral_evolution(self, resolution=100):
+    def show_spectral_evolution(self, resolution=100, return_plot=False):
         self.fit_spectral_indices()
 
         t = np.linspace(
@@ -236,7 +237,10 @@ class GRB:
         plt.plot(t, self.index_at(t))
         plt.xlabel("Log(t) (s)")
         plt.ylabel("Spectral Index")
-
+        
+        if return_plot:
+            return plt
+        
         plt.show()
 
     def get_integral_spectrum(self, time: u.Quantity, first_energy_bin: u.Quantity):
@@ -685,7 +689,7 @@ class oGRB:
 
         plt.show()
 
-    def get_integral_spectrum(self, time: u.Quantity, first_energy_bin: u.Quantity):
+    def get_integral_spectrum(self, time: u.Quantity, first_energy_bin: u.Quantity, mode: Literal["gammapy", "ctools"] = "gammapy"):
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -698,20 +702,21 @@ class oGRB:
             raise ValueError("Please set min and max energy for integral spectrum.")
 
         spectral_index = self.get_spectral_index(time)
-        spectral_index_plus_one = spectral_index + 1
+        amount_to_add = 1 if mode == "ctools" else 2
+        spectral_index_plus = spectral_index + amount_to_add
 
         integral_spectrum = (
             self.get_flux(first_energy_bin, time=time)
-            * (first_energy_bin ** (-spectral_index) / spectral_index_plus_one)
+            * (first_energy_bin ** (-spectral_index) / spectral_index_plus)
             * (
-                (self.max_energy**spectral_index_plus_one)
-                - (self.min_energy**spectral_index_plus_one)
+                (self.max_energy**spectral_index_plus)
+                - (self.min_energy**spectral_index_plus)
             )
         )
 
         return integral_spectrum
 
-    def get_fluence(self, start_time: u.Quantity, stop_time: u.Quantity):
+    def get_fluence(self, start_time: u.Quantity, stop_time: u.Quantity, mode: Literal["gammapy", "ctools"] = "gammapy"):
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -723,7 +728,7 @@ class oGRB:
         first_energy_bin = min(self.energy)
 
         fluence = integrate.quad(
-            lambda time: self.get_integral_spectrum(time * u.s, first_energy_bin).value,
+            lambda time: self.get_integral_spectrum(time * u.s, first_energy_bin, mode=mode).value,
             start_time.value,
             stop_time.value,
         )[0] * u.Unit("cm-2")
@@ -771,7 +776,8 @@ class oGRB:
         self, sensitivity: SensitivityGammapy | SensitivityCtools, start_time, stop_time
     ):
         # Interpolation and integration of the flux with time
-        average_flux = self.get_fluence(start_time, stop_time) / (
+        mode = "gammapy" if isinstance(sensitivity, SensitivityGammapy) else "ctools"
+        average_flux = self.get_fluence(start_time, stop_time, mode=mode) / (
             stop_time - start_time
         )
 
