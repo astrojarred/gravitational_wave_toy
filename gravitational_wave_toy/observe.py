@@ -71,7 +71,7 @@ class GRB:
             (np.log10(self.energy.value), np.log10(self.time.value)), self.spectra
         )
 
-    def show_spectral_pattern(self, resolution=100):
+    def show_spectral_pattern(self, resolution=100, return_plot=False):
         self.set_spectral_grid()
 
         loge = np.around(np.log10(self.energy.value), 1)
@@ -94,6 +94,9 @@ class GRB:
             aspect="auto",
         )
         plt.colorbar(label="spectrum")
+        
+        if return_plot:
+            return plt
 
     def get_spectrum(
         self, time: u.Quantity, energy: u.Quantity | None = None
