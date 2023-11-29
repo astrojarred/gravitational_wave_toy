@@ -34,11 +34,16 @@ if TYPE_CHECKING:
 class SensitivityCtools:
     def __init__(
         self,
-        grbsens_file: str,
         min_energy: u.Quantity,
         max_energy: u.Quantity,
+        grbsens_file: str | Path | None = None,
         mode: str = "photon_flux",
+        regression: list | None = None,
     ) -> None:
+        
+        if grbsens_file is None and regression is None:
+            raise ValueError("Must provide either grbsens_file or regression")
+        
         if min_energy.unit.physical_type != "energy":
             raise ValueError(f"min_energy must be an energy quantity, got {min_energy}")
         if max_energy.unit.physical_type != "energy":
@@ -48,7 +53,21 @@ class SensitivityCtools:
             raise ValueError(f"mode must be 'photon_flux' or 'sensitivity', got {mode}")
 
         self.mode = mode
-        self.output, self.output_sensitivity = self.fit_grbsens(grbsens_file)
+        
+        if regression is not None:
+            if len(regression) != 4:
+                raise ValueError("regression must be a list of length 4")
+            self.output = {
+                "slope": regression[0],
+                "intercept": regression[1],
+            }
+            self.output_sensitivity = {
+                "slope": regression[2],
+                "intercept": regression[3],
+            }
+        else:
+            self.output, self.output_sensitivity = self.fit_grbsens(grbsens_file)
+            
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
 
     def parse_grbsens(
@@ -103,7 +122,15 @@ class SensitivityCtools:
             raise ValueError(f"t must be a time quantity, got {t}")
 
         t = t.to("s")
-        if mode == "sensitivity":
+        if isinstance(self.output, dict):
+            if mode == "sensitivity":
+                slope, intercept = (
+                    self.output_sensitivity["slope"],
+                    self.output_sensitivity["intercept"],
+                )
+            else:
+                slope, intercept = self.output["slope"], self.output["intercept"]
+        elif mode == "sensitivity":
             slope, intercept = (
                 self.output_sensitivity.slope,
                 self.output_sensitivity.intercept,
@@ -119,14 +146,15 @@ class SensitivityCtools:
 class SensitivityGammapy:
     def __init__(
         self,
-        irf: str | Path,
         observatory: str,
         radius: u.Quantity,
         min_energy: u.Quantity,
         max_energy: u.Quantity,
+        irf: str | Path | None = None,
         min_time: u.Quantity = 1 * u.s,
         max_time: u.Quantity = 43200 * u.s,
         sensitivity_points: int = 16,
+        sensitivity_curve: list | None = None,
     ) -> None:
         # check that e_min and e_max are energy and convert to GeV
         if min_energy.unit.physical_type != "energy":
@@ -139,6 +167,9 @@ class SensitivityGammapy:
             raise ValueError(f"min_time must be a time quantity, got {min_time}")
         if max_time.unit.physical_type != "time":
             raise ValueError(f"max_time must be a time quantity, got {max_time}")
+
+        if not irf and sensitivity_curve is None:
+            raise ValueError("Must provide either irf or sensitivity_curve")
 
         self.irf = irf
         self.observatory = observatory
@@ -157,9 +188,20 @@ class SensitivityGammapy:
         )
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
         self._last_table = None
-        self._sensitivity_curve = []
-        self._sensitivity_unit = None
-        self._sensitivity = None
+        
+        if sensitivity_curve is not None:
+            self._sensitivity_curve = sensitivity_curve
+            self._sensitivity_unit = sensitivity_curve[0].unit
+            self._sensitivity = scipy.interpolate.interp1d(
+                np.log10(self.times.value),
+                np.log10(self._sensitivity_curve.value),
+                kind="linear",
+                fill_value="extrapolate",
+            )
+        else:
+            self._sensitivity_curve = []
+            self._sensitivity_unit = None
+            self._sensitivity = None
 
     @property
     def sensitivity_curve(self):
@@ -182,7 +224,7 @@ class SensitivityGammapy:
 
         return 10**log_sensitivity * self._sensitivity_unit
 
-    def get_sensitivity_curve(self, grb: "GRB", sensitivity_points: int | None = None):
+    def get_sensitivity_curve(self, grb: "GRB", sensitivity_points: int | None = None, offset: float = 0.0):
         if not sensitivity_points:
             times = self.times
         else:
@@ -198,9 +240,9 @@ class SensitivityGammapy:
 
         sensitivity_curve = []
 
-        pbar = tqdm(times, desc=f"Processing GRB: {grb.id}")
-        for t in pbar:
-            pbar.set_description(f"Processing GRB: {grb.id} {t:.2f} s")
+        #pbar = tqdm(times, desc=f"Processing GRB: {grb.id}")
+        for t in times:
+            # pbar.set_description(f"Processing GRB: {grb.id} {t:.2f} s")
 
             s = self.get_sensitivity_from_model(
                 t=t,
@@ -208,6 +250,7 @@ class SensitivityGammapy:
                 amplitude=grb.get_spectral_amplitude(t),
                 reference=1 * u.GeV,
                 mode="sensitivity",
+                offset=offset,
             )
 
             sensitivity_curve.append(s)
@@ -234,6 +277,10 @@ class SensitivityGammapy:
         mode="sensitivity",  # "senstivity" or "table"
         **kwargs,
     ) -> float:
+        
+        if not self.irf:
+            raise ValueError("Must provide irf to calculate sensitivity.")
+        
         if mode not in ["photon_flux", "sensitivity", "table"]:
             raise ValueError(f"mode must be 'photon_flux' or 'sensitivity', got {mode}")
 
