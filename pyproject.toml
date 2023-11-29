@@ -23,6 +23,8 @@ ipywidgets = "^8.0.2"
 ipython = "^7.19.0"
 ipykernel = "^5.5.3"
 jupyterlab = "^3.0.15"
+pymongo = "^4.6.0"
+dask = "^2023.11.0"
 
 
 [build-system]
