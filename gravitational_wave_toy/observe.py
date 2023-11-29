@@ -310,6 +310,8 @@ class GRB:
             "_bad_index_times",
             "index_at",
             "amplitude_at",
+            "_num_iters",
+            "_last_guess"
         ]
 
         o = {}
@@ -417,7 +419,13 @@ class GRB:
         if seen:
             
             if highest_possible - midpoint < target_precision:
-                return midpoint, True
+                if midpoint - start_time < target_precision:
+                    res = target_precision+start_time
+                else:
+                    res = midpoint
+                # round res to target precision
+                res = round((res / target_precision).value) * target_precision
+                return res, True
             
             return self._bisect_find_zeros(
                 sensitivity,
@@ -467,7 +475,7 @@ class GRB:
             )
 
         # set energy limits to match the sensitivity
-        if not min_energy or not max_energy:
+        if min_energy is None or max_energy is None:
             self.min_energy, self.max_energy = sensitivity.energy_limits
 
         if not self.min_energy.unit.physical_type == "energy":

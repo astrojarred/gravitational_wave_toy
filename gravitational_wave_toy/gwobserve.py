@@ -15,21 +15,22 @@ import pandas as pd
 import scipy
 import scipy.stats
 from astropy.io import fits
+from astropy import units as u
 from matplotlib import pyplot as plt
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
-
+import logging
 
 warnings.filterwarnings("ignore")  # surpress warnings when using on the command line
 warnings.simplefilter("ignore", np.RankWarning)
 
-import logging
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
 # classes
-class Sensitivity:
+class SensitivityCtools:
     def __init__(self, grbsens_file: str, min_energy: float, max_energy: float) -> None:
 
         self.output = self.fit_grbsens(grbsens_file)
@@ -76,7 +77,6 @@ class Sensitivity:
         )
 
         return 10 ** (slope * np.log10(t) + intercept)
-
 
 class GRB:
     def __init__(
@@ -263,7 +263,6 @@ class GRB:
         return fluence
 
     def output(self):
-
         keys_to_drop = [
             "time",
             "energy",
@@ -274,8 +273,10 @@ class GRB:
             "spectral_indices",
             "_indices",
             "_index_times",
+            "_amplitudes",
             "_bad_index_times",
             "index_at",
+            "amplitude_at"
         ]
 
         o = {}
@@ -288,6 +289,8 @@ class GRB:
                     o[k] = int(v)
                 elif isinstance(v, np.floating):
                     o[k] = float(v)
+                elif isinstance(v, u.Quantity):  # check if value is a Quantity object
+                    o[k] = v  # convert Quantity to list
                 elif isinstance(v, np.ndarray):
                     o[k] = v.tolist()
                 else:
@@ -295,7 +298,7 @@ class GRB:
 
         return o
 
-    def check_if_visible(self, sensitivity: Sensitivity, start_time, stop_time):
+    def check_if_visible(self, sensitivity: SensitivityCtools, start_time, stop_time):
 
         # Interpolation and integration of the flux with time
         average_flux = self.get_fluence(start_time, stop_time) / (
@@ -315,7 +318,7 @@ class GRB:
 
     def observe(
         self,
-        sensitivity: Sensitivity,
+        sensitivity: SensitivityCtools,
         start_time: float = 0,
         min_energy=None,
         max_energy=None,
@@ -397,6 +400,7 @@ class GRB:
             return self.output()
 
         except Exception as e:
+            raise e
             print(e)
 
             self.seen = "error"
@@ -407,7 +411,7 @@ class GRB:
 
 def observe_grb(
     grb_file_path,
-    sensitivity: Sensitivity,
+    sensitivity: SensitivityCtools,
     start_time: float = 0,
     max_time=None,
     target_precision=1,
