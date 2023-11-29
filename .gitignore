@@ -6,6 +6,7 @@ missing_mergers/
 debug_results/
 gravitational_wave_toy/old/
 notebooks/celery-test/
+CTA_sensitivity/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
