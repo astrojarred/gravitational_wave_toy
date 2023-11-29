@@ -5,7 +5,7 @@ description = ""
 authors = ["Jarred Green <jgreen@mpp.mpg.de>"]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.10"
 pandas = "^1.5.0"
 numpy = "^1.23.3"
 scipy = "^1.9.1"
@@ -15,12 +15,16 @@ astropy = "^5.1"
 dask = {extras = ["complete"], version = "^2023.2.0"}
 tqdm = "^4.64.1"
 pyarrow = "^11.0.0"
+gammapy = "^1.1"
+pydantic = "^2.5.1"
 
 [tool.poetry.group.dev.dependencies]
 ipywidgets = "^8.0.2"
 ipython = "^7.19.0"
 ipykernel = "^5.5.3"
 jupyterlab = "^3.0.15"
+pymongo = "^4.6.0"
+dask = "^2023.11.0"
 
 
 [build-system]
