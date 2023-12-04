@@ -16,7 +16,9 @@ from gammapy.maps import MapAxis, RegionGeom
 from gammapy.modeling.models import (
     PowerLawSpectralModel,
     SpectralModel,
+    EBLAbsorptionNormSpectralModel,
 )
+from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from regions import CircleSkyRegion
 from tqdm import tqdm
 
@@ -153,6 +155,7 @@ class SensitivityGammapy:
         irf: str | Path | None = None,
         min_time: u.Quantity = 1 * u.s,
         max_time: u.Quantity = 43200 * u.s,
+        ebl: str | None = None,
         sensitivity_points: int = 16,
         sensitivity_curve: list | None = None,
     ) -> None:
@@ -167,6 +170,9 @@ class SensitivityGammapy:
             raise ValueError(f"min_time must be a time quantity, got {min_time}")
         if max_time.unit.physical_type != "time":
             raise ValueError(f"max_time must be a time quantity, got {max_time}")
+        if ebl is not None:
+            if ebl not in list(EBL_DATA_BUILTIN.keys()):
+                raise ValueError(f"ebl must be one of {list(EBL_DATA_BUILTIN.keys())}, got {ebl}")
 
         if not irf and sensitivity_curve is None:
             raise ValueError("Must provide either irf or sensitivity_curve")
@@ -178,6 +184,7 @@ class SensitivityGammapy:
         self.max_energy = max_energy.to("GeV")
         self.min_time = min_time.to("s")
         self.max_time = max_time.to("s")
+        self.ebl = ebl
         self.times = (
             np.logspace(
                 np.log10(self.min_time.value),
@@ -249,6 +256,7 @@ class SensitivityGammapy:
                 index=grb.get_spectral_index(t),
                 amplitude=grb.get_spectral_amplitude(t),
                 reference=1 * u.GeV,
+                redshift=grb.dist.z,
                 mode="sensitivity",
                 offset=offset,
             )
@@ -274,6 +282,7 @@ class SensitivityGammapy:
         index: float,
         amplitude: u.Quantity,  # [GeV-1 cm-2 s-1]
         reference: u.Quantity | None = None,  # [GeV]
+        redshift: float = 0.0,
         mode="sensitivity",  # "senstivity" or "table"
         **kwargs,
     ) -> float:
@@ -300,6 +309,14 @@ class SensitivityGammapy:
             amplitude=amplitude,
             reference=reference,
         )
+        
+        if self.ebl is not None:
+            ebl_model = EBLAbsorptionNormSpectralModel.read_builtin(
+                self.ebl,
+                redshift=redshift,
+            )
+            
+            t_model = t_model * ebl_model
 
         with suppress_warnings_and_logs(logging_ok=True):
             sens_table = self.gamma_sens(

@@ -7,10 +7,10 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+from astropy.coordinates import Distance
 from gammapy.modeling.models import PowerLawSpectralModel
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
-from scipy.optimize import brentq
 
 from .logging import logger
 from .sensitivity import SensitivityCtools, SensitivityGammapy
@@ -43,11 +43,11 @@ class GRB:
             self.id = 0
 
         with fits.open(filepath) as hdu_list:
-            self.long = hdu_list[0].header["LONG"]
-            self.lat = hdu_list[0].header["LAT"]
-            self.eiso = hdu_list[0].header["EISO"]
-            self.dist = hdu_list[0].header["DISTANCE"]
-            self.angle = hdu_list[0].header["ANGLE"]
+            self.long = hdu_list[0].header["LONG"] * u.Unit("rad")
+            self.lat = hdu_list[0].header["LAT"] * u.Unit("rad")
+            self.eiso = hdu_list[0].header["EISO"] * u.Unit("erg")
+            self.dist = Distance(hdu_list[0].header["DISTANCE"], unit="kpc")
+            self.angle = hdu_list[0].header["ANGLE"] * u.Unit("deg")
 
             datalc = hdu_list[3].data
             datatime = hdu_list[2].data
