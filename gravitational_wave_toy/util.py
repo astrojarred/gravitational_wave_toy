@@ -1,6 +1,7 @@
-import warnings
 import logging
+import warnings
 from contextlib import contextmanager
+
 
 @contextmanager
 def suppress_warnings_and_logs(logging_ok: bool = True):
