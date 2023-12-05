@@ -261,10 +261,7 @@ class SensitivityGammapy:
 
         sensitivity_curve = []
 
-        # pbar = tqdm(times, desc=f"Processing GRB: {grb.id}")
         for t in times:
-            # pbar.set_description(f"Processing GRB: {grb.id} {t:.2f} s")
-
             s = self.get_sensitivity_from_model(
                 t=t,
                 index=grb.get_spectral_index(t),
