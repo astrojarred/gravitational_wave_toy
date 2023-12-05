@@ -331,7 +331,7 @@ class SensitivityGammapy:
 
             t_model = t_model * ebl_model
 
-        sens_table = self.gamma_sens(
+        sens_table = self.estimate_sensitivity(
             irf=self.irf,
             observatory=self.observatory,
             duration=t,
@@ -353,7 +353,7 @@ class SensitivityGammapy:
             return e2dnde
 
     @staticmethod
-    def gamma_sens(
+    def estimate_sensitivity(
         irf: str | Path,
         observatory: str,
         duration: u.Quantity,
