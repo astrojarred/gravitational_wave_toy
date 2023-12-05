@@ -8,7 +8,12 @@ import pandas as pd
 import scipy
 import scipy.stats
 from astropy.coordinates import SkyCoord
-from gammapy.data import Observation, observatory_locations, FixedPointingInfo, PointingMode
+from gammapy.data import (
+    FixedPointingInfo,
+    Observation,
+    PointingMode,
+    observatory_locations,
+)
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
 from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
