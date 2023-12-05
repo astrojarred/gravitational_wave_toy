@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -6,9 +7,13 @@ import astropy.units as u
 # %matplotlib inline
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy.io import fits
 from astropy.coordinates import Distance
-from gammapy.modeling.models import PowerLawSpectralModel
+from astropy.io import fits
+from gammapy.modeling.models import (
+    EBLAbsorptionNormSpectralModel,
+    PowerLawSpectralModel,
+)
+from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
@@ -24,6 +29,7 @@ class GRB:
         filepath: str | Path,
         min_energy: u.Quantity | None = None,
         max_energy: u.Quantity | None = None,
+        ebl: str | None = None,
     ) -> None:
         if isinstance(min_energy, u.Quantity):
             min_energy = min_energy.to("GeV")
@@ -66,6 +72,29 @@ class GRB:
         # fit spectral indices
         self.fit_spectral_indices()
 
+        # set EBL model
+        if ebl is not None:
+            if ebl not in list(EBL_DATA_BUILTIN.keys()):
+                raise ValueError(
+                    f"ebl must be one of {list(EBL_DATA_BUILTIN.keys())}, got {ebl}"
+                )
+            # check that environment variable is set
+            if not os.environ.get("GAMMAPY_DATA"):
+                raise ValueError(
+                    "GAMMAPY_DATA environment variable not set. "
+                    "Please set it to the path where the EBL data is stored. "
+                    "You can copy EBL data from here: https://github.com/astrojarred/gravitational_wave_toy/tree/main/data"
+                )
+                
+            self.ebl = EBLAbsorptionNormSpectralModel.read_builtin(
+                ebl,
+                redshift=self.dist.z,
+            )
+            self.ebl_model = ebl
+        else:
+            self.ebl = None
+            self.ebl_model = None
+
         log.debug(f"Loaded event {self.angle}º")
 
     def __repr__(self):
@@ -99,7 +128,7 @@ class GRB:
             aspect="auto",
         )
         plt.colorbar(label="Log spectrum [ph / (cm2 s GeV)]")
-        
+
         if return_plot:
             return plt
 
@@ -162,11 +191,12 @@ class GRB:
                 (np.log10(energy.value), np.log10(time.value))
             ) * u.Unit("1 / (cm2 s GeV)")
 
-    def get_gammapy_spectrum(self, time: u.Quantity):
+    def get_gammapy_spectrum(self, time: u.Quantity, reference: u.Quantity = 1 * u.GeV):
         return PowerLawSpectralModel(
-            index=self.get_spectral_index(time),
-            amplitude=self.get_spectral_amplitude(time).to("cm-2 s-1 GeV-1"),
-            reference="1 GeV",
+            index=-self.get_spectral_index(time),
+            # amplitude=self.get_spectral_amplitude(time).to("cm-2 s-1 GeV-1"),
+            amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 GeV-1"),
+            reference=reference,
         )
 
     def fit_spectral_indices(self):
@@ -219,7 +249,7 @@ class GRB:
 
         return self.index_at(np.array([np.log10(time.value)]))[0]
 
-    def get_spectral_amplitude(self, time: u.Quantity) -> float:
+    def get_spectral_amplitude(self, time: u.Quantity) -> u.Quantity:
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -241,13 +271,19 @@ class GRB:
         plt.plot(t, self.index_at(t))
         plt.xlabel("Log(t) (s)")
         plt.ylabel("Spectral Index")
-        
+
         if return_plot:
             return plt
-        
+
         plt.show()
 
-    def get_integral_spectrum(self, time: u.Quantity, first_energy_bin: u.Quantity, mode: Literal["gammapy", "ctools"] = "gammapy"):
+    def get_integral_spectrum(
+        self,
+        time: u.Quantity,
+        first_energy_bin: u.Quantity,
+        mode: Literal["gammapy", "ctools"] = "gammapy",
+        use_model: bool = True,
+    ):
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -263,18 +299,35 @@ class GRB:
         amount_to_add = 1 if mode == "ctools" else 2
         spectral_index_plus = spectral_index + amount_to_add
 
-        integral_spectrum = (
-            self.get_flux(first_energy_bin, time=time)
-            * (first_energy_bin ** (-spectral_index) / spectral_index_plus)
-            * (
-                (self.max_energy**spectral_index_plus)
-                - (self.min_energy**spectral_index_plus)
+        if not use_model:
+            integral_spectrum = (
+                self.get_flux(first_energy_bin, time=time)
+                * (first_energy_bin ** (-spectral_index) / spectral_index_plus)
+                * (
+                    (self.max_energy**spectral_index_plus)
+                    - (self.min_energy**spectral_index_plus)
+                )
             )
-        )
+        else:   
+            model = self.get_gammapy_spectrum(time)
+            
+            if self.ebl is not None:
+                model = model * self.ebl
+            
+            if mode == "ctools":
+                integral_spectrum = model.integral(energy_min=self.min_energy, energy_max=self.max_energy).to("cm-2 s-1")
+            else:
+                integral_spectrum = model.energy_flux(energy_min=self.min_energy, energy_max=self.max_energy).to("GeV cm-2 s-1")
+                
 
         return integral_spectrum
 
-    def get_fluence(self, start_time: u.Quantity, stop_time: u.Quantity, mode: Literal["gammapy", "ctools"] = "gammapy"):
+    def get_fluence(
+        self,
+        start_time: u.Quantity,
+        stop_time: u.Quantity,
+        mode: Literal["gammapy", "ctools"] = "gammapy",
+    ):
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -286,11 +339,16 @@ class GRB:
         first_energy_bin = min(self.energy)
 
         unit = u.Unit("cm-2") if mode == "ctools" else u.Unit("GeV cm-2")
-        fluence = integrate.quad(
-            lambda time: self.get_integral_spectrum(time * u.s, first_energy_bin, mode=mode).value,
-            start_time.value,
-            stop_time.value,
-        )[0] * unit
+        fluence = (
+            integrate.quad(
+                lambda time: self.get_integral_spectrum(
+                    time * u.s, first_energy_bin, mode=mode
+                ).value,
+                start_time.value,
+                stop_time.value,
+            )[0]
+            * unit
+        )
 
         log.debug(f"    Fluence: {fluence}")
         return fluence
@@ -304,6 +362,7 @@ class GRB:
             "rng",
             "power_law_slopes",
             "spectral_indices",
+            "ebl",
             "_indices",
             "_index_times",
             "_amplitudes",
@@ -311,7 +370,7 @@ class GRB:
             "index_at",
             "amplitude_at",
             "_num_iters",
-            "_last_guess"
+            "_last_guess",
         ]
 
         o = {}
@@ -340,7 +399,6 @@ class GRB:
         sensitivity: SensitivityCtools | SensitivityGammapy,
         mode: Literal["bool", "difference"] = "bool",
     ) -> bool:
-        
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -348,37 +406,38 @@ class GRB:
 
         start_time = start_time.to("s")
         stop_time = stop_time.to("s")
-        
+
         # Interpolation and integration of the flux with time
-        sens_type = "gammapy" if isinstance(sensitivity, SensitivityGammapy) else "ctools"
+        sens_type = (
+            "gammapy" if isinstance(sensitivity, SensitivityGammapy) else "ctools"
+        )
         # CTOOLS: 1 / (cm2)   || GAMMAPY: GeV / (cm2)
         fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
-        
+
         # CTOOLS: 1 / (cm2 s)   || GAMMAPY: GeV / (cm2 s)
-        average_flux = fluence /  (stop_time - start_time)
-        
+        average_flux = fluence / (stop_time - start_time)
+
         if sens_type == "ctools":
             # calculate photon flux [ 1 / (cm2 s) ]
             photon_flux = sensitivity.get(t=(stop_time - start_time))
             visible = average_flux > photon_flux
             difference = average_flux - photon_flux
-            
+
             log.debug(
                 f"CTOOLS:    visible:{visible} avgflux={average_flux}, photon_flux={photon_flux}"
             )
-            
+
         else:  # gammapy
             e2dnde = sensitivity.get(
                 t=(stop_time - start_time),
             ).to("GeV / (cm2 s)")
-            
-            visible = average_flux > e2dnde 
+
+            visible = average_flux > e2dnde
             difference = average_flux - e2dnde
-            
+
             log.debug(
                 f"GAMMAPY:    visible:{visible} avgflux={average_flux}, sensitivity={sensitivity}"
             )
-            
 
         if mode == "bool":
             return visible
@@ -396,37 +455,37 @@ class GRB:
         lowest_possible: u.Quantity | None = None,
         highest_possible: u.Quantity | None = None,
     ):
-                
         if lowest_possible is None:
             lowest_possible = start_time
         if highest_possible is None:
             highest_possible = stop_time
-            
+
         midpoint = (lowest_possible + highest_possible) / 2
-        
+
         if current_iter >= max_iter:
             return midpoint, False
-        
+
         seen = self.check_if_visible(
-            start_time, 
-            midpoint, 
+            start_time,
+            midpoint,
             sensitivity,
         )
-        
+
         # print in table format
-        log.debug(f"{current_iter:<10} {start_time:<10.2f} {stop_time:<10.2f} {midpoint:<10.2f} {seen}")
-        
+        log.debug(
+            f"{current_iter:<10} {start_time:<10.2f} {stop_time:<10.2f} {midpoint:<10.2f} {seen}"
+        )
+
         if seen:
-            
             if highest_possible - midpoint < target_precision:
                 if midpoint - start_time < target_precision:
-                    res = target_precision+start_time
+                    res = target_precision + start_time
                 else:
                     res = midpoint
                 # round res to target precision
                 res = round((res / target_precision).value) * target_precision
                 return res, True
-            
+
             return self._bisect_find_zeros(
                 sensitivity,
                 start_time=start_time,
@@ -448,8 +507,6 @@ class GRB:
                 lowest_possible=midpoint,
                 highest_possible=highest_possible,
             )
-        
-        
 
     def observe(
         self,
@@ -459,7 +516,7 @@ class GRB:
         max_energy: u.Quantity = None,
         max_time: u.Quantity = 12 * u.hour,
         target_precision: u.Quantity = 1 * u.s,
-        _max_loops=100,
+        max_iter=100,
     ):
         """Modified version to increase timestep along with time size"""
 
@@ -509,7 +566,7 @@ class GRB:
                 return self.output()
 
             end_time, seen = self._bisect_find_zeros(
-                sensitivity, start_time, max_time + start_time, target_precision
+                sensitivity, start_time, max_time + start_time, target_precision, max_iter=max_iter
             )
 
             if seen:

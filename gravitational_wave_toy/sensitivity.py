@@ -261,10 +261,7 @@ class SensitivityGammapy:
 
         sensitivity_curve = []
 
-        # pbar = tqdm(times, desc=f"Processing GRB: {grb.id}")
         for t in times:
-            # pbar.set_description(f"Processing GRB: {grb.id} {t:.2f} s")
-
             s = self.get_sensitivity_from_model(
                 t=t,
                 index=grb.get_spectral_index(t),
@@ -331,7 +328,7 @@ class SensitivityGammapy:
 
             t_model = t_model * ebl_model
 
-        sens_table = self.gamma_sens(
+        sens_table = self.estimate_sensitivity(
             irf=self.irf,
             observatory=self.observatory,
             duration=t,
@@ -353,7 +350,7 @@ class SensitivityGammapy:
             return e2dnde
 
     @staticmethod
-    def gamma_sens(
+    def estimate_sensitivity(
         irf: str | Path,
         observatory: str,
         duration: u.Quantity,
