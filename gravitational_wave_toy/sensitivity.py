@@ -8,7 +8,7 @@ import pandas as pd
 import scipy
 import scipy.stats
 from astropy.coordinates import SkyCoord
-from gammapy.data import Observation, observatory_locations
+from gammapy.data import Observation, observatory_locations, FixedPointingInfo, PointingMode
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
 from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
@@ -23,7 +23,6 @@ from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from regions import CircleSkyRegion
 
 from .logging import logger
-from .util import suppress_warnings_and_logs
 
 # Set up logging
 log = logger(__name__)
@@ -327,17 +326,16 @@ class SensitivityGammapy:
 
             t_model = t_model * ebl_model
 
-        with suppress_warnings_and_logs(logging_ok=True):
-            sens_table = self.gamma_sens(
-                irf=self.irf,
-                observatory=self.observatory,
-                duration=t,
-                radius=self.radius,
-                min_energy=self.min_energy,
-                max_energy=self.max_energy,
-                model=t_model,
-                **kwargs,
-            )
+        sens_table = self.gamma_sens(
+            irf=self.irf,
+            observatory=self.observatory,
+            duration=t,
+            radius=self.radius,
+            min_energy=self.min_energy,
+            max_energy=self.max_energy,
+            model=t_model,
+            **kwargs,
+        )
 
         self._last_table = sens_table
 
@@ -435,15 +433,13 @@ class SensitivityGammapy:
         )
 
         # Define region
-        pointing = SkyCoord(source_ra, source_dec, unit="deg", frame="icrs")
+        fixed_icrs = SkyCoord(source_ra, source_dec, unit="deg", frame="icrs")
+        pointing = FixedPointingInfo(fixed_icrs=fixed_icrs, mode=PointingMode.POINTING)
         offset_pointing = SkyCoord(
             source_ra, source_dec + offset, unit="deg", frame="icrs"
         )
         region = CircleSkyRegion(center=offset_pointing, radius=radius)
         geom = RegionGeom.create(region, axes=[energy_axis])
-
-        # pointing = SkyCoord(0, 0, unit="deg", frame="icrs")
-        # geom = RegionGeom.create(f"icrs;circle(0, {offset}, {radius})", axes=[energy_axis])
 
         # Define empty dataset
         empty_dataset = SpectrumDataset.create(
