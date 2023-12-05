@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -7,23 +8,26 @@ import pandas as pd
 import scipy
 import scipy.stats
 from astropy.coordinates import SkyCoord
-from gammapy.data import Observation, observatory_locations
+from gammapy.data import (
+    FixedPointingInfo,
+    Observation,
+    PointingMode,
+    observatory_locations,
+)
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
 from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
 from gammapy.makers import SpectrumDatasetMaker
 from gammapy.maps import MapAxis, RegionGeom
 from gammapy.modeling.models import (
+    EBLAbsorptionNormSpectralModel,
     PowerLawSpectralModel,
     SpectralModel,
-    EBLAbsorptionNormSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from regions import CircleSkyRegion
-from tqdm import tqdm
 
 from .logging import logger
-from .util import suppress_warnings_and_logs
 
 # Set up logging
 log = logger(__name__)
@@ -42,10 +46,9 @@ class SensitivityCtools:
         mode: str = "photon_flux",
         regression: list | None = None,
     ) -> None:
-        
         if grbsens_file is None and regression is None:
             raise ValueError("Must provide either grbsens_file or regression")
-        
+
         if min_energy.unit.physical_type != "energy":
             raise ValueError(f"min_energy must be an energy quantity, got {min_energy}")
         if max_energy.unit.physical_type != "energy":
@@ -55,7 +58,7 @@ class SensitivityCtools:
             raise ValueError(f"mode must be 'photon_flux' or 'sensitivity', got {mode}")
 
         self.mode = mode
-        
+
         if regression is not None:
             if len(regression) != 4:
                 raise ValueError("regression must be a list of length 4")
@@ -69,7 +72,7 @@ class SensitivityCtools:
             }
         else:
             self.output, self.output_sensitivity = self.fit_grbsens(grbsens_file)
-            
+
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
 
     def parse_grbsens(
@@ -172,7 +175,16 @@ class SensitivityGammapy:
             raise ValueError(f"max_time must be a time quantity, got {max_time}")
         if ebl is not None:
             if ebl not in list(EBL_DATA_BUILTIN.keys()):
-                raise ValueError(f"ebl must be one of {list(EBL_DATA_BUILTIN.keys())}, got {ebl}")
+                raise ValueError(
+                    f"ebl must be one of {list(EBL_DATA_BUILTIN.keys())}, got {ebl}"
+                )
+            # check that environment variable is set
+            if not os.environ.get("GAMMAPY_DATA"):
+                raise ValueError(
+                    "GAMMAPY_DATA environment variable not set. "
+                    "Please set it to the path where the EBL data is stored. "
+                    "You can copy EBL data from here: https://github.com/astrojarred/gravitational_wave_toy/tree/main/data"
+                )
 
         if not irf and sensitivity_curve is None:
             raise ValueError("Must provide either irf or sensitivity_curve")
@@ -195,7 +207,7 @@ class SensitivityGammapy:
         )
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
         self._last_table = None
-        
+
         if sensitivity_curve is not None:
             self._sensitivity_curve = sensitivity_curve
             self._sensitivity_unit = sensitivity_curve[0].unit
@@ -231,7 +243,9 @@ class SensitivityGammapy:
 
         return 10**log_sensitivity * self._sensitivity_unit
 
-    def get_sensitivity_curve(self, grb: "GRB", sensitivity_points: int | None = None, offset: float = 0.0):
+    def get_sensitivity_curve(
+        self, grb: "GRB", sensitivity_points: int | None = None, offset: float = 0.0
+    ):
         if not sensitivity_points:
             times = self.times
         else:
@@ -247,7 +261,7 @@ class SensitivityGammapy:
 
         sensitivity_curve = []
 
-        #pbar = tqdm(times, desc=f"Processing GRB: {grb.id}")
+        # pbar = tqdm(times, desc=f"Processing GRB: {grb.id}")
         for t in times:
             # pbar.set_description(f"Processing GRB: {grb.id} {t:.2f} s")
 
@@ -286,10 +300,9 @@ class SensitivityGammapy:
         mode="sensitivity",  # "senstivity" or "table"
         **kwargs,
     ) -> float:
-        
         if not self.irf:
             raise ValueError("Must provide irf to calculate sensitivity.")
-        
+
         if mode not in ["photon_flux", "sensitivity", "table"]:
             raise ValueError(f"mode must be 'photon_flux' or 'sensitivity', got {mode}")
 
@@ -309,26 +322,25 @@ class SensitivityGammapy:
             amplitude=amplitude,
             reference=reference,
         )
-        
+
         if self.ebl is not None:
             ebl_model = EBLAbsorptionNormSpectralModel.read_builtin(
                 self.ebl,
                 redshift=redshift,
             )
-            
+
             t_model = t_model * ebl_model
 
-        with suppress_warnings_and_logs(logging_ok=True):
-            sens_table = self.gamma_sens(
-                irf=self.irf,
-                observatory=self.observatory,
-                duration=t,
-                radius=self.radius,
-                min_energy=self.min_energy,
-                max_energy=self.max_energy,
-                model=t_model,
-                **kwargs,
-            )
+        sens_table = self.gamma_sens(
+            irf=self.irf,
+            observatory=self.observatory,
+            duration=t,
+            radius=self.radius,
+            min_energy=self.min_energy,
+            max_energy=self.max_energy,
+            model=t_model,
+            **kwargs,
+        )
 
         self._last_table = sens_table
 
@@ -426,15 +438,13 @@ class SensitivityGammapy:
         )
 
         # Define region
-        pointing = SkyCoord(source_ra, source_dec, unit="deg", frame="icrs")
+        fixed_icrs = SkyCoord(source_ra, source_dec, unit="deg", frame="icrs")
+        pointing = FixedPointingInfo(fixed_icrs=fixed_icrs, mode=PointingMode.POINTING)
         offset_pointing = SkyCoord(
             source_ra, source_dec + offset, unit="deg", frame="icrs"
         )
         region = CircleSkyRegion(center=offset_pointing, radius=radius)
         geom = RegionGeom.create(region, axes=[energy_axis])
-
-        # pointing = SkyCoord(0, 0, unit="deg", frame="icrs")
-        # geom = RegionGeom.create(f"icrs;circle(0, {offset}, {radius})", axes=[energy_axis])
 
         # Define empty dataset
         empty_dataset = SpectrumDataset.create(
