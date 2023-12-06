@@ -36,7 +36,7 @@ An input GRB model and an instrument sensitivity curve specific to the desired o
 
 The purpose of this is to simualte the possibility of detecting very-high-energy electromagnetic counterparts to gravitational wave events events. The package can also create heatmaps for observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory.
 
-For more information, check out our [ICRC proceedings from 2021](https://pos.sissa.it/395/998/pdf).
+For more information, check out our [ICRC proceedings from 2023](https://arxiv.org/abs/2310.07413).
 
 ## 🏁 Getting Started<a name = "getting_started"></a>
 
@@ -44,9 +44,9 @@ You need a gravitational wave event catalog. If you don't have this please conta
 
 In addition, you need a python installation and the packages outlines in `pyproject.toml`. We recommend using `poetry` or `conda` to manage your python environment.
 
-Note: dask is only necessary to read in the output data with the `gwplot` class.
+Note: dask is only necessary to read in the output data with the `plot` class.
 
-## ✍️ Authors<a name = "authors"></a>
+## ✍️ Authors<a name = "Maintainers"></a>
 
 - [Jarred Green](https://github.com/astrojarred) (jgreen at mpp.mpg.de)
 - Barbara Patricelli (barbara.patricelli at pi.infn.it)
@@ -59,13 +59,33 @@ Note: dask is only necessary to read in the output data with the `gwplot` class.
 #### Methods
 This code simulates observations of simulated gravitational wave events to determine under which circumstances the event could be detectable by a gamma-ray observatory. An input GRB model and an instrument sensitivity curve specific to the desired observational conditions are provided as input. Given a delay from the onset of the event, the code uses a simple optimization algorithm to determine at which point in time (if at all) the source would be detectable by an instrument with the given sensitivity.
 
-**Note:** Details regarding the mathematics are provided in [this markdown file](math.md)
-
 #### Inputs
 
-- An instrument sensitivity file from `grbsens`
-  - Newest version is v3 and can be found [here](CTA_sensitivity/grbsens_output_v3_Sep_2022/)
-- GW event models (currently compatible with O5 simulations)
+- Instrument sensitivity curves
+  - This can be calculated using [gammapy](https://gammapy.org/) (recommended) or [ctools](http://cta.irap.omp.eu/ctools/index.html), via `grbsens`. See the next section for details.
+- IRFs. As of v3.0.0 the most recent Alpha configuration IRFs are prod5-v0.1 and can be found on [Zenodo](https://zenodo.org/records/5499840#.YUya5WYzbUI).
+  - Place files downloaded from Zenodo in a folder with the name of the production (e.g. `prod5-v0.1`) and place all of these folders together in a parent folder (e.g. `CTA-IRFs`).
+  ```
+  # sample filetree
+  CTA-IRFs      (this is the root directory to use with the IRFHouse class)
+  ├── prod5-v0.1
+  │   ├── fits
+  │   │   ├── CTA-Performance-prod5-v0.1-North-20deg.FITS.tar.gz
+  │   │   ├── CTA-Performance-prod5-v0.1-South-20deg.FITS.tar.gz
+  │   │   ├── etc...
+  │   prod3b-v2
+  │   etc...
+  ```
+- GW event models (currently compatible with O5 simulations).
+- EBL files (optional). For CTA these can be downloaded directly with `gammapy` using the `gammapy download datasets` command.
+  - These are also automatically [included in the package](/data/ebl/)
+  - The environment variable `GAMMAPY_DATA` must be set to the location of the parent folder of `ebl` for this to work.
+
+#### Sensitivity Curves
+
+- Since v3.0, this package can now use gammapy to calculate sensitivity curves. This is the recommended method.
+  - Curves will be calculated on an individual basis for each event.
+- The old method of using `grbsens` is still supported, but is still supported to compare various methods. An instrument sensitivity file from `grbsens`.
 
 #### Output
 
@@ -74,47 +94,56 @@ This code simulates observations of simulated gravitational wave events to deter
 #### Example
 
 ```python
-from gravitational_wave_toy import gwobserve
+from astropy import units as u
 
-# import the sensitivity
-# interpolation of the sensitivity curve will be done here
-sens = gwobserve.Sensitivity(
-    "/path/to/sensitivity/file/grbsens-5.0sigma_t1s-t16384s_irf.txt",
-    min_energy=0.3,     # generally determined by the energy range of the IRFs
-    max_energy=10000,
+from gravitational_wave_toy.ctairf import IRFHouse
+from gravitational_wave_toy.observe import GRB
+from gravitational_wave_toy.sensitivity import SensitivityCtools, SensitivityGammapy
+
+# create a home for all your IRFs
+house = IRFHouse(base_directory="./CTA-IRFs")
+
+# load in the desired IRF
+irf = house.get_irf(
+    site="south",
+    configuration="alpha",
+    zenith=20,
+    duration=1800,
+    azimuth="average",
+    version="prod5-v0.1",
 )
 
-# import a GRB file
-# interpolation of the spectra are performed here
-grb = GW.GRB("../GammaCatalog_O5/cat05_runID.fits")
+# create a gammapy sensitivity class
+min_energy = 30 * u.GeV
+max_energy = 10 * u.TeV
 
-# simulate observations
+sens = SensitivityGammapy(
+    irf=irf,
+    observatory=f"cta_{irf.site.name}",
+    min_energy=min_energy,
+    max_energy=max_energy,
+    radius=3.0 * u.deg,
+)
+
+# load in a GRB and add EBL
+grb_filepath = "/path/to/your/grb/cat05_1234.fits.
+grb = GRB(file, min_energy=min_energy, max_energy=max_energy, ebl="franceschini")
+
+# load the sensitivity curve for the GRB
+sens.get_sensitivity_curve(grb=grb)
+
+# simulate the observation
+delay_time = 30 * u.min
+
 res = grb.observe(
     sensitivity=sens,
-    start_time=3600,     # starting delay in seconds
-    target_precision=0.1  # numerical precision
-    )
+    start_time=delay_time,
+    min_energy=min_energy,
+    max_energy=max_energy,
+)
 
-# output
-print(res)
-> {
->   'filepath': '../GammaCatalog_O5/catO5_100.fits',
->   'min_energy': 0.3,
->   'max_energy': 10000,
->   'seen': True,
->   'obs_time': 15,
->   'start_time': 3600,
->   'end_time': 3615,
->   'error_message': '',
->   'long': 6.1,
->   'lat': -10.5,
->   'eiso': 4.37e+48,
->   'dist': 124000.0,
->   'angle': 34.412
-> }
-
-
-
+print(f"Observation time at delay={delay_time} is {res_ebl['obs_time']} with EBL={res_ebl['ebl_model']}")
+# Obs time at delay=1800.0 s is 1292.0 s with EBL=franceschini
 ```
 
 ### Reading Results<a name = "instructions-reading"></a>
