@@ -1,7 +1,7 @@
 import logging
 
 # Set up logging
-logging.basicConfig(filename='/Users/jarred/Documents/Work/gravitational_wave_toy/gravitational_wave_toy/logging.log',
+logging.basicConfig(filename='./gwtoy.log',
                     level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -48,11 +48,13 @@ class logger:
     def critical(self, message: str) -> None:
         self.logger.critical(message)
         
+"""python
 # example usage
-# from gravitational_wave_toy.logging import logger
-# log = logger(name='test', filename='/Users/jarred/Documents/Work/gravitational_wave_toy/gravitational_wave_toy/logging.log')
-# log.debug('This is a debug message')
-# log.info('This is an info message')
-# log.warning('This is a warning message')
-# log.error('This is an error message')
-# log.critical('This is a critical message')
+from gravitational_wave_toy.logging import logger
+log = logger(name='test', filename='./gwtoy.log')
+log.debug('This is a debug message')
+log.info('This is an info message')
+log.warning('This is a warning message')
+log.error('This is an error message')
+log.critical('This is a critical message')
+"""
