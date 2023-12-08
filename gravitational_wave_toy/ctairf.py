@@ -3,7 +3,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, validator
 from itertools import product
 from enum import Enum, IntEnum
-
+from astropy.io import fits
+from astropy import units as u
 
 class Site(Enum):
     south = "south"
@@ -70,6 +71,8 @@ class IRF(BaseModel):
     n_sst: Optional[int] = None
     n_mst: Optional[int] = None
     n_lst: Optional[int] = None
+    energy_min: Optional[u.Quantity] = None
+    energy_max: Optional[u.Quantity] = None
     version: Optional[str] = None
 
     @validator("base_directory", pre=True)
@@ -135,6 +138,18 @@ class IRF(BaseModel):
 
     def __fspath__(self):
         return str(self.filepath)
+    
+    def get_energy_limits(self):
+        with fits.open(self.filepath) as hdul:
+            self.energy_min = min(hdul[1].data["ENERG_LO"][0]) * u.TeV
+            self.energy_max = max(hdul[1].data["ENERG_HI"][0]) * u.TeV
+            
+    @property
+    def energy_limits(self):
+        if self.energy_min is None or self.energy_max is None:
+            self.get_energy_limits()
+        return self.energy_min, self.energy_max
+        
 
 
 class IRFHouse(BaseModel):
