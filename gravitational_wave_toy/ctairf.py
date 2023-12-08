@@ -71,8 +71,8 @@ class IRF(BaseModel):
     n_sst: Optional[int] = None
     n_mst: Optional[int] = None
     n_lst: Optional[int] = None
-    energy_min: Optional[u.Quantity] = None
-    energy_max: Optional[u.Quantity] = None
+    energy_min: Optional[float] = None
+    energy_max: Optional[float] = None
     version: Optional[str] = None
 
     @validator("base_directory", pre=True)
