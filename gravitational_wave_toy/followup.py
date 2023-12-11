@@ -111,7 +111,7 @@ def get_exposure(
     delay: u.Quantity,
     site: str,
     zenith: int,
-    ebl: bool = False,
+    ebl: str | None = None,
     software: str = "gammapy",
     config: str = "alpha",
     duration: int = 1800,
@@ -159,7 +159,7 @@ def get_exposure(
         event_id=event_id,
         site=site,
         zenith=zenith,
-        ebl=ebl,
+        ebl=bool(ebl),
         software=software,
         config=config,
         duration=duration,
@@ -168,7 +168,7 @@ def get_exposure(
         max_energy=max_energy,
     )
 
-    grb = observe.GRB(grb_filepath, min_energy, max_energy)
+    grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
 
     result = grb.observe(
         sens,
