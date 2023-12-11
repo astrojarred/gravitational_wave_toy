@@ -39,9 +39,9 @@ class GRB:
         self.filepath = Path(filepath).absolute()
         self.min_energy, self.max_energy = min_energy, max_energy
         self.seen = False
-        self.obs_time = -1
-        self.start_time = -1
-        self.end_time = -1
+        self.obs_time = -1 * u.s
+        self.start_time = -1 * u.s
+        self.end_time = -1 * u.s
         self.error_message = ""
         try:
             self.id = int(self.filepath.stem.split("_")[1])
@@ -574,8 +574,8 @@ class GRB:
                 self.obs_time = end_time - start_time
                 self.seen = True
             else:
-                self.end_time = -1
-                self.obs_time = -1
+                self.end_time = -1 * u.s
+                self.obs_time = -1 * u.s
                 self.seen = False
 
             # just return dict now
