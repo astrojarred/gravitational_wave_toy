@@ -394,11 +394,17 @@ class GRB:
 
     def check_if_visible(
         self,
-        start_time: u.Quantity,
-        stop_time: u.Quantity,
+        stop_time: u.Quantity | float | int,
+        start_time: u.Quantity | float | int,
         sensitivity: SensitivityCtools | SensitivityGammapy,
         mode: Literal["bool", "difference"] = "bool",
     ) -> bool:
+        
+        if isinstance(start_time, float) or isinstance(start_time, int):
+            start_time = start_time * u.s
+        if isinstance(stop_time, float) or isinstance(stop_time, int):
+            stop_time = stop_time * u.s
+        
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -415,7 +421,10 @@ class GRB:
         fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
 
         # CTOOLS: 1 / (cm2 s)   || GAMMAPY: GeV / (cm2 s)
-        average_flux = fluence / (stop_time - start_time)
+        if stop_time - start_time == 0:
+            average_flux = 0 * fluence.unit / u.s
+        else:
+            average_flux = fluence / (stop_time - start_time)
 
         if sens_type == "ctools":
             # calculate photon flux [ 1 / (cm2 s) ]
@@ -442,7 +451,7 @@ class GRB:
         if mode == "bool":
             return visible
         else:
-            return difference
+            return difference.value
 
     def _bisect_find_zeros(
         self,
@@ -466,8 +475,8 @@ class GRB:
             return midpoint, False
 
         seen = self.check_if_visible(
-            start_time,
             midpoint,
+            start_time,
             sensitivity,
         )
 
@@ -517,6 +526,7 @@ class GRB:
         max_time: u.Quantity = 12 * u.hour,
         target_precision: u.Quantity = 1 * u.s,
         max_iter=100,
+        _method: Literal["bisect", "scipy"] = "bisect",
     ):
         """Modified version to increase timestep along with time size"""
 
@@ -559,15 +569,35 @@ class GRB:
             delay = start_time
 
             # check maximum time
-            visible = self.check_if_visible(delay, max_time + delay, sensitivity)
+            visible = self.check_if_visible(max_time + delay, delay, sensitivity)
 
             # not visible even after maximum observation time
             if not visible:
                 return self.output()
 
-            end_time, seen = self._bisect_find_zeros(
-                sensitivity, start_time, max_time + start_time, target_precision, max_iter=max_iter
-            )
+            if _method == "bisect":
+                end_time, seen = self._bisect_find_zeros(
+                    sensitivity, start_time, max_time + start_time, target_precision, max_iter=max_iter
+                )
+            else:
+                import scipy.optimize as opt
+                res = opt.brentq(
+                    self.check_if_visible,
+                    start_time.value,
+                    max_time.value + start_time.value,
+                    args=(start_time.value, sensitivity, "difference"),
+                    xtol=target_precision.value,
+                )
+                
+                if res < 0:
+                    seen = False
+                else:
+                    seen = True
+                
+                end_time = res * u.s
+                
+                # round end_time to target precision
+                end_time = round((end_time / target_precision).value) * target_precision
 
             if seen:
                 self.end_time = end_time
@@ -582,6 +612,7 @@ class GRB:
             return self.output()
 
         except Exception as e:
+            raise e
             print(e)
 
             self.seen = "error"
