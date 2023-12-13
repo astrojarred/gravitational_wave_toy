@@ -17,7 +17,7 @@ from gammapy.data import (
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
 from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
-from gammapy.makers import SpectrumDatasetMaker
+from gammapy.makers import SpectrumDatasetMaker, ReflectedRegionsBackgroundMaker, SafeMaskMaker, WobbleRegionsFinder
 from gammapy.maps import MapAxis, RegionGeom
 from gammapy.modeling.models import (
     EBLAbsorptionNormSpectralModel,
@@ -25,7 +25,7 @@ from gammapy.modeling.models import (
     SpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
-from regions import CircleSkyRegion
+from regions import CircleSkyRegion, PointSkyRegion
 
 from .logging import logger
 
@@ -155,7 +155,7 @@ class SensitivityGammapy:
         radius: u.Quantity,
         min_energy: u.Quantity,
         max_energy: u.Quantity,
-        irf: str | Path | None = None,
+        irf: str | Path | dict | None = None,
         min_time: u.Quantity = 1 * u.s,
         max_time: u.Quantity = 43200 * u.s,
         ebl: str | None = None,
@@ -351,7 +351,7 @@ class SensitivityGammapy:
 
     @staticmethod
     def estimate_sensitivity(
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -403,9 +403,12 @@ class SensitivityGammapy:
             Integral sensitivity in units of cm^-2 s^-1
         """
         # check that IRF file exists
-        irf = Path(irf)
-        if not irf.exists():
-            raise FileNotFoundError(f"IRF file not found: {irf}")
+        if isinstance(irf, dict):
+            irfs = irf
+        else:
+            irf = Path(irf)
+            if not irf.exists():
+                raise FileNotFoundError(f"IRF file not found: {irf}")
 
         # check units
         if duration.unit.physical_type != "time":
@@ -424,6 +427,10 @@ class SensitivityGammapy:
             raise ValueError(f"max_energy must be an energy quantity, got {max_energy}")
         else:
             max_energy = max_energy.to("TeV")
+            
+        # Load IRFs
+        if not isinstance(irf, dict):
+            irfs = load_irf_dict_from_file(irf)
 
         # Define energy axis
         energy_axis = MapAxis.from_energy_bounds(
@@ -440,22 +447,18 @@ class SensitivityGammapy:
         offset_pointing = SkyCoord(
             source_ra, source_dec + offset, unit="deg", frame="icrs"
         )
-        region = CircleSkyRegion(center=offset_pointing, radius=radius)
+        
+        if irf.get("bkg") is not None:
+            region = CircleSkyRegion(center=offset_pointing, radius=radius)
+        else:
+            region = PointSkyRegion(offset_pointing)
         geom = RegionGeom.create(region, axes=[energy_axis])
-
-        # Define empty dataset
-        empty_dataset = SpectrumDataset.create(
-            geom=geom, energy_axis_true=energy_axis_true
-        )
 
         # define power law dataset
         if model == "powerlaw":
             model = PowerLawSpectralModel(
                 index=2.1, amplitude="5.7e-13 cm-2 s-1 TeV-1", reference="1 TeV"
             )
-
-        # Load IRFs
-        irfs = load_irf_dict_from_file(irf)
 
         # Define observation
         location = observatory_locations[observatory]
@@ -464,30 +467,52 @@ class SensitivityGammapy:
             pointing=pointing, irfs=irfs, livetime=duration, location=location
         )
 
-        # Create dataset
-        spectrum_maker = SpectrumDatasetMaker(
-            selection=["exposure", "edisp", "background"]
-        )
-        dataset = spectrum_maker.run(empty_dataset, obs)
-
         ## Correct for energy dependent region size
         # Define containment
-        containment = 0.68
+        if irf.get("bkg") is not None:
+            
+            # Define empty dataset
+            empty_dataset = SpectrumDataset.create(
+                geom=geom, energy_axis_true=energy_axis_true
+            )
 
-        # correct exposure
-        dataset.exposure *= containment
+            # Create dataset
+            spectrum_maker = SpectrumDatasetMaker(
+                selection=["exposure", "edisp", "background"]
+            )
+            dataset = spectrum_maker.run(empty_dataset, obs)
 
-        # Define on region radius
-        on_radii = obs.psf.containment_radius(
-            energy_true=energy_axis.center, offset=offset * u.deg, fraction=containment
-        )
+            containment = 0.68
 
-        factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
-        dataset.background *= factor.value.reshape((-1, 1, 1))
+            # correct exposure
+            dataset.exposure *= containment
 
-        dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
-            dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
-        )
+            # Define on region radius
+            on_radii = obs.psf.containment_radius(
+                energy_true=energy_axis.center, offset=offset * u.deg, fraction=containment
+            )
+
+            factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
+            dataset.background *= factor.value.reshape((-1, 1, 1))
+
+            dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
+                dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
+            )
+        else:
+            empty_dataset = SpectrumDataset.create(geom=geom, energy_axis_true=energy_axis_true)
+            spectrum_maker = SpectrumDatasetMaker(
+                containment_correction=False, selection=["counts", "exposure", "edisp"]
+            )
+            # we need a RegionsFinder to find the OFF regions
+            # and a BackgroundMaker to fill the array of the OFF counts
+            region_finder = WobbleRegionsFinder(n_off_regions=1)
+            bkg_maker = ReflectedRegionsBackgroundMaker(region_finder=region_finder)
+
+            dataset = spectrum_maker.run(
+                empty_dataset.copy(name=str(irf["obs"].obs_id)), irf["obs"]
+            )
+            # fill the OFF counts
+            dataset_on_off = bkg_maker.run(dataset, irf["obs"])
 
         ## Calculate sensitivity
         sensitivity_estimator = SensitivityEstimator(
