@@ -40,10 +40,11 @@ def get_row(
 
 
 def get_sensitivity(
-    sens_df: pd.DataFrame,
     event_id: int,
     site: str,
     zenith: int,
+    sens_df: pd.DataFrame | None = None,
+    sens_curve: list | None = None,
     ebl: bool = False,
     software: str = "gammapy",
     config: str = "alpha",
@@ -52,19 +53,26 @@ def get_sensitivity(
     min_energy: u.Quantity = 0.03 * u.TeV,
     max_energy: u.Quantity = 10 * u.TeV,
 ):
+    
+    if sens_df is None and sens_curve is None:
+        raise ValueError("Must provide either sens_df or sens_curve")
+    if sens_df:
 
-    row = get_row(
-        sens_df=sens_df,
-        event_id=event_id,
-        site=site,
-        zenith=zenith,
-        ebl=ebl,
-        software=software,
-        config=config,
-        duration=duration,
-    )
+        row = get_row(
+            sens_df=sens_df,
+            event_id=event_id,
+            site=site,
+            zenith=zenith,
+            ebl=ebl,
+            software=software,
+            config=config,
+            duration=duration,
+        )
 
-    curve = row["sensitivity_curve"]
+        curve = row["sensitivity_curve"]
+        
+    else:
+        curve = sens_curve
 
     if software == "gammapy":
         sens = sensitivity.SensitivityGammapy(
@@ -85,12 +93,13 @@ def get_sensitivity(
 
 
 def get_exposure(
-    sens_df: pd.DataFrame,
     grb_filepath: Path | str,
     event_id: int,
     delay: u.Quantity,
     site: str,
     zenith: int,
+    sens_df: pd.DataFrame | None = None,
+    sens_curve: list | None = None,
     ebl: str | None = None,
     software: str = "gammapy",
     config: str = "alpha",
@@ -125,10 +134,11 @@ def get_exposure(
     max_time = max_time.to("s")
 
     sens = get_sensitivity(
-        sens_df=sens_df,
         event_id=event_id,
         site=site,
         zenith=zenith,
+        sens_df=sens_df,
+        sens_curve=sens_curve,
         ebl=bool(ebl),
         software=software,
         config=config,
