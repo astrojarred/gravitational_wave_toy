@@ -17,16 +17,6 @@ def get_row(
     config: str = "alpha",
     duration: int = 1800,
 ):
-    if site not in ["north", "south"]:
-        raise ValueError("site must be north or south")
-    if zenith not in [20, 40, 60]:
-        raise ValueError("zenith must be 20, 40 or 60")
-    if software not in ["gammapy", "ctools"]:
-        raise ValueError("software must be gammapy or ctools")
-    if config not in ["alpha", "omega"]:
-        raise ValueError("config must be alpha or omega")
-    if duration != 1800:
-        raise ValueError("Duration must be 1800")
 
     # find row with these values
     rows = sens_df[
@@ -62,16 +52,6 @@ def get_sensitivity(
     min_energy: u.Quantity = 0.03 * u.TeV,
     max_energy: u.Quantity = 10 * u.TeV,
 ):
-    if site not in ["north", "south"]:
-        raise ValueError("site must be north or south")
-    if zenith not in [20, 40, 60]:
-        raise ValueError("zenith must be 20, 40 or 60")
-    if software not in ["gammapy", "ctools"]:
-        raise ValueError("software must be gammapy or ctools")
-    if config not in ["alpha", "omega"]:
-        raise ValueError("config must be alpha or omega")
-    if duration != 1800:
-        raise ValueError("Duration must be 1800")
 
     row = get_row(
         sens_df=sens_df,
@@ -130,16 +110,6 @@ def get_exposure(
         raise ValueError(f"max_energy must be an energy quantity, got {max_energy}")
     if radius.unit.physical_type != "angle":
         raise ValueError(f"radius must be an angle quantity, got {radius}")
-    if site not in ["north", "south"]:
-        raise ValueError("site must be north or south")
-    if zenith not in [20, 40, 60]:
-        raise ValueError("zenith must be 20, 40 or 60")
-    if software not in ["gammapy", "ctools"]:
-        raise ValueError("software must be gammapy or ctools")
-    if config not in ["alpha", "omega"]:
-        raise ValueError("config must be alpha or omega")
-    if duration != 1800:
-        raise ValueError("Duration must be 1800")
     if target_precision.unit.physical_type != "time":
         raise ValueError(
             f"target_precision must be a time quantity, got {target_precision}"
