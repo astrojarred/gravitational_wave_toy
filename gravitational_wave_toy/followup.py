@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 from astropy import units as u
+from numpy import log10
+from scipy.interpolate import interp1d
 
 from . import observe, sensitivity
 
@@ -39,6 +41,49 @@ def get_row(
     return rows.iloc[0]
 
 
+def extrapolate_obs_time(
+    event_id: int,
+    delay: u.Quantity,
+    extrapolation_df: pd.DataFrame,
+    filters: dict[str, str] = {},
+    other_info: list[str] = [],
+):
+    
+    res = {}
+    delay = delay.to("s").value
+    event_info = extrapolation_df[extrapolation_df["coinc_event_id"] == event_id]
+    
+    if filters:
+        for key, value in filters.items():
+            event_info = event_info[event_info[key] == value]
+            
+    if other_info:
+        for key in other_info:
+            res[key] = event_info.iloc[0][key]
+    
+    event_dict = event_info.set_index('obs_delay')['obs_time'].to_dict() 
+    
+    if delay < min(event_dict.keys()):
+        res["error_message"] = f"Minimum delay is {min(event_dict.keys())} seconds for this simulation"
+        res["obs_time"] = -1
+
+    # remove negative values
+    pos_event_dict = {k: v for k, v in event_dict.items() if v > 0}
+        
+    # perform log interpolation
+    log_event_dict = {log10(k): log10(v) for k, v in pos_event_dict.items()}
+
+    interp = interp1d(list(log_event_dict.keys()), list(log_event_dict.values()), kind="linear")
+    
+    try:
+        res["obs_time"] = 10**interp(log10(delay))
+        res["error_message"] = ""
+    except ValueError:
+        res["obs_time"] = -1
+        res["error_message"] = "Extrapolation failed for this simulation"
+        
+    return res
+
 def get_sensitivity(
     event_id: int,
     site: str,
@@ -56,7 +101,7 @@ def get_sensitivity(
     
     if sens_df is None and sens_curve is None:
         raise ValueError("Must provide either sens_df or sens_curve")
-    if sens_df:
+    if sens_df is not None:
 
         row = get_row(
             sens_df=sens_df,
@@ -100,6 +145,7 @@ def get_exposure(
     zenith: int,
     sens_df: pd.DataFrame | None = None,
     sens_curve: list | None = None,
+    extrapolation_df: pd.DataFrame | None = None,
     ebl: str | None = None,
     software: str = "gammapy",
     config: str = "alpha",
@@ -132,6 +178,37 @@ def get_exposure(
     radius = radius.to("deg")
     target_precision = target_precision.to("s")
     max_time = max_time.to("s")
+    
+    if extrapolation_df is not None:
+        
+        obs_info = extrapolate_obs_time(
+            event_id=event_id,
+            delay=delay,
+            extrapolation_df=extrapolation_df,
+            filters={"irf_site": site, "irf_zenith": zenith},
+            other_info=["long", "lat", "eiso", "dist", "theta_view", "irf_ebl_model"]
+        )
+        
+        obs_time = obs_info["obs_time"]
+        if obs_time > 0:
+            obs_time = round(obs_time / target_precision.value) * target_precision
+        
+        # rename key
+        obs_info["angle"] = obs_info.pop("theta_view")
+        obs_info["ebl_model"] = obs_info.pop("irf_ebl_model")
+        
+        other_info = {
+            "filepath": grb_filepath.absolute(),
+            "min_energy": min_energy,
+            "max_energy": max_energy,
+            "seen": True if obs_time > 0 else False,
+            "obs_time": obs_time if obs_time > 0 else -1,
+            "start_time": delay,
+            "end_time": delay + obs_time if obs_time > 0 else -1,
+            "id": event_id,
+        }
+        
+        return {**obs_info, **other_info}
 
     sens = get_sensitivity(
         event_id=event_id,
