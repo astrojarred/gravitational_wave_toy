@@ -126,7 +126,7 @@ sens = SensitivityGammapy(
 )
 
 # load in a GRB and add EBL
-grb_filepath = "/path/to/your/grb/cat05_1234.fits.
+grb_filepath = "/path/to/your/grb/cat05_1234.fits".
 grb = GRB(file, min_energy=min_energy, max_energy=max_energy, ebl="franceschini")
 
 # load the sensitivity curve for the GRB
