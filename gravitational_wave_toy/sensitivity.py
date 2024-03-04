@@ -443,7 +443,7 @@ class SensitivityGammapy:
 
         # Define region
         fixed_icrs = SkyCoord(source_ra, source_dec, unit="deg", frame="icrs")
-        pointing = FixedPointingInfo(fixed_icrs=fixed_icrs, mode=PointingMode.POINTING)
+        pointing = FixedPointingInfo(fixed_icrs=fixed_icrs)
         offset_pointing = SkyCoord(
             source_ra, source_dec + offset, unit="deg", frame="icrs"
         )
