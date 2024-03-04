@@ -448,7 +448,7 @@ class SensitivityGammapy:
             source_ra, source_dec + offset, unit="deg", frame="icrs"
         )
         
-        if irf.get("bkg") is not None:
+        if irfs.get("bkg") is not None:
             region = CircleSkyRegion(center=offset_pointing, radius=radius)
         else:
             region = PointSkyRegion(offset_pointing)
@@ -469,7 +469,7 @@ class SensitivityGammapy:
 
         ## Correct for energy dependent region size
         # Define containment
-        if irf.get("bkg") is not None:
+        if irfs.get("bkg") is not None:
             
             # Define empty dataset
             empty_dataset = SpectrumDataset.create(
