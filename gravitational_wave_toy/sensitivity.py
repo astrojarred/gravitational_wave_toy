@@ -184,7 +184,7 @@ class SensitivityGammapy:
 
         if not irf and sensitivity_curve is None:
             raise ValueError("Must provide either irf or sensitivity_curve")
-        if not irf and not (min_energy and max_energy):
+        if not irf and not (min_energy is None or max_energy is None):
             raise ValueError("Must provide irf or min_energy and max_energy")
         
         # get min and max energy if not provided
