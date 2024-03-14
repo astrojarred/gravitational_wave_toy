@@ -473,35 +473,53 @@ class SensitivityGammapy:
         on_region = CircleSkyRegion(source_position, radius=on_region_radius)
 
         geom = RegionGeom.create(on_region, axes=[energy_axis])
-        empty_dataset = SpectrumDataset.create(geom=geom, energy_axis_true=energy_axis_true)
 
         # extract 1D IRFs
         location = observatory_locations[observatory]
         obs = Observation.create(
             pointing=pointing_info, irfs=irfs, livetime=duration, location=location
         )
-
-        spectrum_maker = SpectrumDatasetMaker(
-            selection=["exposure", "edisp", "background"],
-            containment_correction=False,
-        )
-        dataset = spectrum_maker.run(empty_dataset, obs)
         
-        containment = 0.68
-
-        # correct exposure
-        dataset.exposure *= containment
-
-        # correct background estimation
-        on_radii = obs.psf.containment_radius(
-            energy_true=energy_axis.center, offset=offset, fraction=containment
-        )
-        factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
-        dataset.background *= factor.value.reshape((-1, 1, 1))
+        empty_dataset = SpectrumDataset.create(geom=geom, energy_axis_true=energy_axis_true)
         
-        dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
-            dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
-        )
+        
+        # create a bkg model if not included
+        if irfs.get("bkg") is not None:
+            spectrum_maker = SpectrumDatasetMaker(
+                selection=["exposure", "edisp", "background"],
+                containment_correction=False,
+            )
+            dataset = spectrum_maker.run(empty_dataset, obs)
+            
+            containment = 0.68
+
+            # correct exposure
+            dataset.exposure *= containment
+
+            # correct background estimation
+            on_radii = obs.psf.containment_radius(
+                energy_true=energy_axis.center, offset=offset, fraction=containment
+            )
+            factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
+            dataset.background *= factor.value.reshape((-1, 1, 1))
+            
+            dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
+                dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
+            )
+        else:
+            spectrum_maker = SpectrumDatasetMaker(
+                containment_correction=False, selection=["counts", "exposure", "edisp"]
+            )
+            # we need a RegionsFinder to find the OFF regions
+            # and a BackgroundMaker to fill the array of the OFF counts
+            region_finder = WobbleRegionsFinder(n_off_regions=1)
+            bkg_maker = ReflectedRegionsBackgroundMaker(region_finder=region_finder)
+
+            dataset = spectrum_maker.run(
+                empty_dataset.copy(name=str(irf["obs"].obs_id)), irf["obs"]
+            )
+            # fill the OFF counts
+            dataset_on_off = bkg_maker.run(dataset, irf["obs"])
         
         sensitivity_estimator = SensitivityEstimator(
             spectrum=model, gamma_min=gamma_min, n_sigma=sigma, bkg_syst_fraction=bkg_syst_fraction
