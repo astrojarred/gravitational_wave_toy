@@ -393,7 +393,7 @@ class SensitivityGammapy:
         source_ra: float = 83.6331,
         source_dec: float = 22.0145,
         sigma: float = 5,
-        n_bins: int = 10,
+        n_bins: int = 50,
         offset: u.Quantity = 0 * u.deg,
         gamma_min: int = 5,
         acceptance: float = 1,
