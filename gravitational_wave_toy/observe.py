@@ -13,6 +13,7 @@ from gammapy.modeling.models import (
     EBLAbsorptionNormSpectralModel,
     PowerLawSpectralModel,
 )
+from gammapy.maps import MapAxis
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
@@ -198,6 +199,12 @@ class GRB:
             amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 GeV-1"),
             reference=reference,
         )
+        
+    def get_time_dependent_gammapy_spectrum(self):
+        
+        time_axis = MapAxis.from_bounds(self.time.min(), self.time.max(), nbin=self.time.size, name="time", interp="lin")
+        
+        return time_axis
 
     def fit_spectral_indices(self):
         spectra = self.spectra.T
