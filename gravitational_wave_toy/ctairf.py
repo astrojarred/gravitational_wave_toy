@@ -221,7 +221,7 @@ class IRFHouse(BaseModel):
         configuration: Literal["alpha", "omega"],
         zenith: int,
         duration: Literal[1800, 18000, 180000],
-        azimuth: Literal["north", "south", "average"],
+        azimuth: Literal["north", "south", "average"] = "average",
         modified: bool = False,
         nsb: bool = False,
     ):
