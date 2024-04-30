@@ -791,14 +791,14 @@ class SensitivityGammapyTimeDependent:
         source_ra: float = 83.6331,
         source_dec: float = 22.0145,
         sigma: float = 5,
-        n_bins: int = 50,
+        n_bins: int | None = None,
         offset: u.Quantity = 0 * u.deg,
         gamma_min: int = 5,
         acceptance: float = 1,
         acceptance_off: float = 5,
-        bkg_syst_fraction: float = 0.01,
+        bkg_syst_fraction: float = 0.05,
         sensitivity_type: Literal["differential", "integral"] = "integral",
-        return_type: Literal["e2dnde", "sensitivity", "photon_flux", "table"] = "flux",
+        return_type: Literal["e2dnde", "energy_flux", "photon_flux", "table"] = "energy_flux",
     ) -> u.Quantity | Table:
         """
         Calculate the integral sensitivity for a given set of parameters.
@@ -857,6 +857,21 @@ class SensitivityGammapyTimeDependent:
         offset = offset.to("deg")
         source_ra = source_ra * u.deg
         source_dec = source_dec * u.deg
+        
+        if not n_bins:
+            # decide n_bins based on CTA's 5/decade rule
+            n_bins = int(np.log10(max_energy / min_energy) * 5)
+        
+        # check combination of sensitivity type and return type
+        if sensitivity_type == "differential":
+            return_type = "table"
+            
+        if sensitivity_type not in ["differential", "integral"]:
+            raise ValueError(f"sensitivity_type must be 'differential' or 'integral', got {sensitivity_type}")
+        if return_type not in ["e2dnde", "energy_flux", "photon_flux", "table"]:
+            raise ValueError(f"return_type must be 'e2dnde', 'energy_flux', 'photon_flux', or 'table', got {return_type}")
+        
+        print(f"Calculating {sensitivity_type} sensitivity, returning {return_type}")
         
         energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)
         energy_axis_true = MapAxis.from_energy_bounds(
@@ -947,16 +962,24 @@ class SensitivityGammapyTimeDependent:
                 return sensitivity_table
             
             # finally integral sensitivity returned as flux
-            e2dnde = np.array(sensitivity_table['e2dnde'].tolist()) * sensitivity_table['e2dnde'].unit
-            E_ref = np.array(sensitivity_table['e_ref'].tolist()) * sensitivity_table['e_ref'].unit
-            E_min_diff = np.array(sensitivity_table['e_min'].tolist()) * sensitivity_table['e_min'].unit
-            E_max_diff = np.array(sensitivity_table['e_max'].tolist()) * sensitivity_table['e_max'].unit
-                        
+            
+            # filter out insane rows where e2dnde > 1 or == inf
+            # while np.any(sensitivity_table["e2dnde"] > 1):
+            #     for i, row in enumerate(sensitivity_table):
+            #         if row["e2dnde"] > 1:
+            #             sensitivity_table.remove_row(i)
+            #             break
+            
+            e2dnde = (np.array(sensitivity_table['e2dnde'].tolist()) * sensitivity_table['e2dnde'].unit).to("erg / (cm2 s)")
+            E_ref = (np.array(sensitivity_table['e_ref'].tolist()) * sensitivity_table['e_ref'].unit).to("erg")
+            E_min_diff = (np.array(sensitivity_table['e_min'].tolist()) * sensitivity_table['e_min'].unit).to("erg")
+            E_max_diff = (np.array(sensitivity_table['e_max'].tolist()) * sensitivity_table['e_max'].unit).to("erg")
+            
             if return_type == "sensitivity":
 
                 # calculate integral sensitivity
-                # integral_sensitivity = np.trapz(e2dnde * (1/(E_ref)), x=E_ref)
-                integral_sensitivity = (e2dnde * (1/E_ref) * (E_max_diff - E_min_diff)).sum() * u.Unit("erg / (cm2 s)")
+                # integral_sensitivity = np.trapz(e2dnde * (1/(E_ref)), x=E_ref) * u.Unit("erg / (cm2 s)")
+                integral_sensitivity = (e2dnde * (1/E_ref) * (E_max_diff - E_min_diff)).sum().to("erg / (cm2 s)")
                 
                 return integral_sensitivity
             
