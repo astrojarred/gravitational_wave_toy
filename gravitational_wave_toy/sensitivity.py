@@ -259,7 +259,7 @@ class SensitivityGammapy:
         return 10**log_sensitivity * self._sensitivity_unit
 
     def get_sensitivity_curve(
-        self, grb: "GRB", sensitivity_points: int | None = None, offset: u.Quantity = 0.0 * u.deg, n_energy_bins: int | None = None
+        self, grb: "GRB", sensitivity_points: int | None = None, offset: u.Quantity = 0.0 * u.deg, n_energy_bins: int | None = None, **kwargs
     ):
         if not sensitivity_points:
             times = self.times
@@ -290,6 +290,7 @@ class SensitivityGammapy:
                 offset=offset,
                 bins=n_energy_bins,
                 return_type="energy_flux",
+                **kwargs
             )
 
             sensitivity_curve.append(s)
