@@ -378,7 +378,7 @@ class SensitivityGammapy:
         radius: u.Quantity,
         min_energy: u.Quantity,
         max_energy: u.Quantity,
-        model: SpectralModel | str | None = None,
+        model: SpectralModel,
         source_ra: float = 83.6331,
         source_dec: float = 22.0145,
         sigma: float = 5,
