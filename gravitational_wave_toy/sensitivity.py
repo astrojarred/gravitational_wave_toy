@@ -3,13 +3,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import astropy.units as u
-from astropy.io import fits
-from astropy.table.table import Table
 import numpy as np
 import pandas as pd
 import scipy
 import scipy.stats
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
+from astropy.table.table import Table
 from gammapy.data import (
     FixedPointingInfo,
     Observation,
@@ -18,7 +18,11 @@ from gammapy.data import (
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
 from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
-from gammapy.makers import SpectrumDatasetMaker, ReflectedRegionsBackgroundMaker, SafeMaskMaker, WobbleRegionsFinder
+from gammapy.makers import (
+    ReflectedRegionsBackgroundMaker,
+    SpectrumDatasetMaker,
+    WobbleRegionsFinder,
+)
 from gammapy.maps import MapAxis, RegionGeom
 from gammapy.modeling.models import (
     EBLAbsorptionNormSpectralModel,
@@ -26,7 +30,7 @@ from gammapy.modeling.models import (
     SpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
-from regions import CircleSkyRegion, PointSkyRegion
+from regions import CircleSkyRegion
 
 from .logging import logger
 
@@ -148,6 +152,7 @@ class SensitivityCtools:
 
         return 10 ** (slope * np.log10(t.value) + intercept) * unit
 
+
 class SensitivityGammapy:
     def __init__(
         self,
@@ -186,7 +191,7 @@ class SensitivityGammapy:
             raise ValueError("Must provide either irf or sensitivity_curve")
         if not irf and (min_energy is None or max_energy is None):
             raise ValueError("Must provide irf or min_energy and max_energy")
-        
+
         # get min and max energy if not provided
         if min_energy is None or max_energy is None:
             if not isinstance(irf, dict):
@@ -198,8 +203,10 @@ class SensitivityGammapy:
                 if max_energy is None:
                     max_energy = bins_upper[-1] * u.TeV
             else:
-                raise ValueError("Must provide min_energy and max_energy if irf is not a filepath.")
-        
+                raise ValueError(
+                    "Must provide min_energy and max_energy if irf is not a filepath."
+                )
+
         if min_energy.unit.physical_type != "energy":
             raise ValueError(f"e_min must be an energy quantity, got {min_energy}")
         if max_energy.unit.physical_type != "energy":
@@ -259,7 +266,12 @@ class SensitivityGammapy:
         return 10**log_sensitivity * self._sensitivity_unit
 
     def get_sensitivity_curve(
-        self, grb: "GRB", sensitivity_points: int | None = None, offset: u.Quantity = 0.0 * u.deg, n_energy_bins: int | None = None, **kwargs
+        self,
+        grb: "GRB",
+        sensitivity_points: int | None = None,
+        offset: u.Quantity = 0.0 * u.deg,
+        n_energy_bins: int | None = None,
+        **kwargs,
     ):
         if not sensitivity_points:
             times = self.times
@@ -275,10 +287,10 @@ class SensitivityGammapy:
             self.times = times
 
         sensitivity_curve = []
-        
+
         if not n_energy_bins:
             n_energy_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
-        
+
         for t in times:
             s = self.get_sensitivity_from_model(
                 t=t,
@@ -290,7 +302,7 @@ class SensitivityGammapy:
                 offset=offset,
                 bins=n_energy_bins,
                 return_type="energy_flux",
-                **kwargs
+                **kwargs,
             )
 
             sensitivity_curve.append(s)
@@ -317,7 +329,9 @@ class SensitivityGammapy:
         redshift: float = 0.0,
         mode: Literal["sensitivity", "table"] = "sensitivity",
         sensitivity_type: Literal["integral", "differential"] = "integral",
-        return_type: Literal["e2dnde", "energy_flux", "photon_flux", "table", "all"] = "energy_flux",
+        return_type: Literal[
+            "e2dnde", "energy_flux", "photon_flux", "table", "all"
+        ] = "energy_flux",
         bins: int | None = 10,
         **kwargs,
     ) -> float:
@@ -387,7 +401,9 @@ class SensitivityGammapy:
         acceptance_off: float = 5,
         bkg_syst_fraction: float = 0.05,
         sensitivity_type: Literal["differential", "integral"] = "integral",
-        return_type: Literal["e2dnde", "energy_flux", "photon_flux", "table", "all"] = "energy_flux",
+        return_type: Literal[
+            "e2dnde", "energy_flux", "photon_flux", "table", "all"
+        ] = "energy_flux",
     ) -> u.Quantity | Table:
         """
         Calculate the integral sensitivity for a given set of parameters.
@@ -434,7 +450,7 @@ class SensitivityGammapy:
         """
         # check that IRF file exists
         irf = Path(irf)
-        
+
         # Load IRFs
         irfs = load_irf_dict_from_file(irf)
 
@@ -446,20 +462,24 @@ class SensitivityGammapy:
         offset = offset.to("deg")
         source_ra = source_ra * u.deg
         source_dec = source_dec * u.deg
-        
+
         if not n_bins:
             # decide n_bins based on CTA's 5/decade rule
             n_bins = int(np.log10(max_energy / min_energy) * 5)
-        
+
         # check combination of sensitivity type and return type
         if sensitivity_type == "differential":
             return_type = "table"
-            
+
         if sensitivity_type not in ["differential", "integral"]:
-            raise ValueError(f"sensitivity_type must be 'differential' or 'integral', got {sensitivity_type}")
+            raise ValueError(
+                f"sensitivity_type must be 'differential' or 'integral', got {sensitivity_type}"
+            )
         if return_type not in ["e2dnde", "energy_flux", "photon_flux", "table"]:
-            raise ValueError(f"return_type must be 'e2dnde', 'energy_flux', 'photon_flux', or 'table', got {return_type}")
-        
+            raise ValueError(
+                f"return_type must be 'e2dnde', 'energy_flux', 'photon_flux', or 'table', got {return_type}"
+            )
+
         energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)
         energy_axis_true = MapAxis.from_energy_bounds(
             0.01 * u.TeV, 100 * u.TeV, nbin=100, name="energy_true"
@@ -479,10 +499,11 @@ class SensitivityGammapy:
         obs = Observation.create(
             pointing=pointing_info, irfs=irfs, livetime=duration, location=location
         )
-        
-        empty_dataset = SpectrumDataset.create(geom=geom, energy_axis_true=energy_axis_true)
-        
-        
+
+        empty_dataset = SpectrumDataset.create(
+            geom=geom, energy_axis_true=energy_axis_true
+        )
+
         # create a bkg model if not included
         if irfs.get("bkg") is not None:
             spectrum_maker = SpectrumDatasetMaker(
@@ -490,7 +511,7 @@ class SensitivityGammapy:
                 containment_correction=False,
             )
             dataset = spectrum_maker.run(empty_dataset, obs)
-            
+
             containment = 0.68
 
             # correct exposure
@@ -502,7 +523,7 @@ class SensitivityGammapy:
             )
             factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
             dataset.background *= factor.value.reshape((-1, 1, 1))
-            
+
             dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
                 dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
             )
@@ -520,51 +541,70 @@ class SensitivityGammapy:
             )
             # fill the OFF counts
             dataset_on_off = bkg_maker.run(dataset, irf["obs"])
-        
+
         sensitivity_estimator = SensitivityEstimator(
-            spectrum=model, gamma_min=gamma_min, n_sigma=sigma, bkg_syst_fraction=bkg_syst_fraction
+            spectrum=model,
+            gamma_min=gamma_min,
+            n_sigma=sigma,
+            bkg_syst_fraction=bkg_syst_fraction,
         )
-        
+
         if sensitivity_type == "integral" and return_type in ["e2dnde", "table"]:
-        
             dataset_on_off_image = dataset_on_off.to_image()
-            
+
             # get the integral flux sensitivity
             sensitivity_table = sensitivity_estimator.run(dataset_on_off_image)
-            
+
             if return_type == "table":
                 return sensitivity_table
-            
+
             # get e2dnde
-            e2dnde = sensitivity_table["e2dnde"].data[0] * sensitivity_table["e2dnde"].unit
+            e2dnde = (
+                sensitivity_table["e2dnde"].data[0] * sensitivity_table["e2dnde"].unit
+            )
             e2dnde = e2dnde.to("erg / (cm2 s)")
-            
+
             return e2dnde
-        
+
         else:
-        
             sensitivity_table = sensitivity_estimator.run(dataset_on_off)
-            
+
             if sensitivity_type == "differential":
                 return sensitivity_table
-            
+
             # integrate differential sensitivity
-            e2dnde = (np.array(sensitivity_table['e2dnde'].tolist()) * sensitivity_table['e2dnde'].unit).to("erg / (cm2 s)")
-            E_ref = (np.array(sensitivity_table['e_ref'].tolist()) * sensitivity_table['e_ref'].unit).to("erg")
-            E_min_diff = (np.array(sensitivity_table['e_min'].tolist()) * sensitivity_table['e_min'].unit).to("erg")
-            E_max_diff = (np.array(sensitivity_table['e_max'].tolist()) * sensitivity_table['e_max'].unit).to("erg")
-            
+            e2dnde = (
+                np.array(sensitivity_table["e2dnde"].tolist())
+                * sensitivity_table["e2dnde"].unit
+            ).to("erg / (cm2 s)")
+            E_ref = (
+                np.array(sensitivity_table["e_ref"].tolist())
+                * sensitivity_table["e_ref"].unit
+            ).to("erg")
+            E_min_diff = (
+                np.array(sensitivity_table["e_min"].tolist())
+                * sensitivity_table["e_min"].unit
+            ).to("erg")
+            E_max_diff = (
+                np.array(sensitivity_table["e_max"].tolist())
+                * sensitivity_table["e_max"].unit
+            ).to("erg")
+
             # calculate integral sensitivity
-            integral_sensitivity = (e2dnde * (1/E_ref) * (E_max_diff - E_min_diff)).sum().to("erg / (cm2 s)")
+            integral_sensitivity = (
+                (e2dnde * (1 / E_ref) * (E_max_diff - E_min_diff))
+                .sum()
+                .to("erg / (cm2 s)")
+            )
 
             if return_type == "energy_flux":
                 return integral_sensitivity
-            
-            photon_flux = (e2dnde * (1/(E_ref**2)) * (E_max_diff - E_min_diff)).sum() * u.Unit("1 / (cm2 s)")
-            
+
+            photon_flux = (
+                e2dnde * (1 / (E_ref**2)) * (E_max_diff - E_min_diff)
+            ).sum() * u.Unit("1 / (cm2 s)")
+
             if return_type == "photon_flux":
                 return photon_flux
-            
+
             return integral_sensitivity, photon_flux
-                        
-            
