@@ -552,31 +552,19 @@ class SensitivityGammapy:
             if sensitivity_type == "differential":
                 return sensitivity_table
             
-            # finally integral sensitivity returned as flux
-            
-            # filter out insane rows where e2dnde > 1 or == inf
-            # while np.any(sensitivity_table["e2dnde"] > 1):
-            #     for i, row in enumerate(sensitivity_table):
-            #         if row["e2dnde"] > 1:
-            #             sensitivity_table.remove_row(i)
-            #             break
-            
+            # integrate differential sensitivity
             e2dnde = (np.array(sensitivity_table['e2dnde'].tolist()) * sensitivity_table['e2dnde'].unit).to("erg / (cm2 s)")
             E_ref = (np.array(sensitivity_table['e_ref'].tolist()) * sensitivity_table['e_ref'].unit).to("erg")
             E_min_diff = (np.array(sensitivity_table['e_min'].tolist()) * sensitivity_table['e_min'].unit).to("erg")
             E_max_diff = (np.array(sensitivity_table['e_max'].tolist()) * sensitivity_table['e_max'].unit).to("erg")
-
-            x_values = np.array(list(zip(E_min_diff.value, E_max_diff.value)))
             
             # calculate integral sensitivity
-            # integral_sensitivity = np.trapz(e2dnde * (1/(E_ref)), x=E_ref) * u.Unit("erg / (cm2 s)")
             integral_sensitivity = (e2dnde * (1/E_ref) * (E_max_diff - E_min_diff)).sum().to("erg / (cm2 s)")
 
             if return_type == "energy_flux":
                 return integral_sensitivity
             
-            # photon_flux = (e2dnde * (1/(E_ref**2)) * (E_max_diff - E_min_diff)).sum() * u.Unit("1 / (cm2 s)")
-            photon_flux = np.trapz(e2dnde * (1/(E_ref**2)), x=x_values) * u.Unit("1 / (cm2 s)")
+            photon_flux = (e2dnde * (1/(E_ref**2)) * (E_max_diff - E_min_diff)).sum() * u.Unit("1 / (cm2 s)")
             
             if return_type == "photon_flux":
                 return photon_flux
