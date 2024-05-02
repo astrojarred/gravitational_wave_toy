@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import astropy.units as u
+from astropy.io import fits
+from astropy.table.table import Table
 import numpy as np
 import pandas as pd
 import scipy
@@ -11,7 +13,6 @@ from astropy.coordinates import SkyCoord
 from gammapy.data import (
     FixedPointingInfo,
     Observation,
-    PointingMode,
     observatory_locations,
 )
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
@@ -147,14 +148,13 @@ class SensitivityCtools:
 
         return 10 ** (slope * np.log10(t.value) + intercept) * unit
 
-
 class SensitivityGammapy:
     def __init__(
         self,
         observatory: str,
         radius: u.Quantity,
-        min_energy: u.Quantity,
-        max_energy: u.Quantity,
+        min_energy: u.Quantity | None = None,
+        max_energy: u.Quantity | None = None,
         irf: str | Path | dict | None = None,
         min_time: u.Quantity = 1 * u.s,
         max_time: u.Quantity = 43200 * u.s,
@@ -163,10 +163,6 @@ class SensitivityGammapy:
         sensitivity_curve: list | None = None,
     ) -> None:
         # check that e_min and e_max are energy and convert to GeV
-        if min_energy.unit.physical_type != "energy":
-            raise ValueError(f"e_min must be an energy quantity, got {min_energy}")
-        if max_energy.unit.physical_type != "energy":
-            raise ValueError(f"e_max must be an energy quantity, got {max_energy}")
         if radius.unit.physical_type != "angle":
             raise ValueError(f"radius must be an angle quantity, got {radius}")
         if min_time.unit.physical_type != "time":
@@ -188,6 +184,26 @@ class SensitivityGammapy:
 
         if not irf and sensitivity_curve is None:
             raise ValueError("Must provide either irf or sensitivity_curve")
+        if not irf and (min_energy is None or max_energy is None):
+            raise ValueError("Must provide irf or min_energy and max_energy")
+        
+        # get min and max energy if not provided
+        if min_energy is None or max_energy is None:
+            if not isinstance(irf, dict):
+                with fits.open(irf) as irf_fits:
+                    bins_lower = irf_fits[1].data["ENERG_LO"][0]
+                    bins_upper = irf_fits[1].data["ENERG_HI"][0]
+                if min_energy is None:
+                    min_energy = bins_lower[0] * u.TeV
+                if max_energy is None:
+                    max_energy = bins_upper[-1] * u.TeV
+            else:
+                raise ValueError("Must provide min_energy and max_energy if irf is not a filepath.")
+        
+        if min_energy.unit.physical_type != "energy":
+            raise ValueError(f"e_min must be an energy quantity, got {min_energy}")
+        if max_energy.unit.physical_type != "energy":
+            raise ValueError(f"e_max must be an energy quantity, got {max_energy}")
 
         self.irf = irf
         self.observatory = observatory
@@ -206,7 +222,6 @@ class SensitivityGammapy:
             * u.s
         )
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
-        self._last_table = None
 
         if sensitivity_curve is not None:
             self._sensitivity_curve = sensitivity_curve
@@ -244,7 +259,7 @@ class SensitivityGammapy:
         return 10**log_sensitivity * self._sensitivity_unit
 
     def get_sensitivity_curve(
-        self, grb: "GRB", sensitivity_points: int | None = None, offset: float = 0.0
+        self, grb: "GRB", sensitivity_points: int | None = None, offset: u.Quantity = 0.0 * u.deg, n_energy_bins: int | None = None, **kwargs
     ):
         if not sensitivity_points:
             times = self.times
@@ -260,7 +275,10 @@ class SensitivityGammapy:
             self.times = times
 
         sensitivity_curve = []
-
+        
+        if not n_energy_bins:
+            n_energy_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
+        
         for t in times:
             s = self.get_sensitivity_from_model(
                 t=t,
@@ -270,9 +288,14 @@ class SensitivityGammapy:
                 redshift=grb.dist.z,
                 mode="sensitivity",
                 offset=offset,
+                bins=n_energy_bins,
+                return_type="energy_flux",
+                **kwargs
             )
 
             sensitivity_curve.append(s)
+            
+        print(sensitivity_curve)
 
         self._sensitivity_unit = sensitivity_curve[0].unit
         self._sensitivity_curve = (
@@ -294,7 +317,10 @@ class SensitivityGammapy:
         amplitude: u.Quantity,  # [GeV-1 cm-2 s-1]
         reference: u.Quantity | None = None,  # [GeV]
         redshift: float = 0.0,
-        mode="sensitivity",  # "senstivity" or "table"
+        mode: Literal["sensitivity", "table"] = "sensitivity",
+        sensitivity_type: Literal["integral", "differential"] = "integral",
+        return_type: Literal["e2dnde", "energy_flux", "photon_flux", "table", "all"] = "energy_flux",
+        bins: int | None = 10,
         **kwargs,
     ) -> float:
         if not self.irf:
@@ -328,7 +354,7 @@ class SensitivityGammapy:
 
             t_model = t_model * ebl_model
 
-        sens_table = self.estimate_sensitivity(
+        sens_result = self.estimate_sensitivity(
             irf=self.irf,
             observatory=self.observatory,
             duration=t,
@@ -336,66 +362,72 @@ class SensitivityGammapy:
             min_energy=self.min_energy,
             max_energy=self.max_energy,
             model=t_model,
+            n_bins=bins,
+            sensitivity_type=sensitivity_type,
+            return_type=return_type,
             **kwargs,
         )
 
-        self._last_table = sens_table
-
-        e2dnde = sens_table["e2dnde"].data[0] * sens_table["e2dnde"].unit
-        e2dnde = e2dnde.to("erg / (cm2 s)")
-
-        if mode == "table":
-            return sens_table
-        else:
-            return e2dnde
+        return sens_result
 
     @staticmethod
     def estimate_sensitivity(
-        irf: str | Path | dict,
+        irf: str | Path,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
         min_energy: u.Quantity,
         max_energy: u.Quantity,
-        model: SpectralModel | str | None = None,
+        model: SpectralModel,
         source_ra: float = 83.6331,
         source_dec: float = 22.0145,
         sigma: float = 5,
-        bins: int = 1,
-        offset: float = 0.0,
+        n_bins: int | None = None,
+        offset: u.Quantity = 0 * u.deg,
+        gamma_min: int = 5,
         acceptance: float = 1,
         acceptance_off: float = 5,
         bkg_syst_fraction: float = 0.05,
-    ):
+        sensitivity_type: Literal["differential", "integral"] = "integral",
+        return_type: Literal["e2dnde", "energy_flux", "photon_flux", "table", "all"] = "energy_flux",
+    ) -> u.Quantity | Table:
         """
         Calculate the integral sensitivity for a given set of parameters.
 
         Parameters
         ----------
-        irf : str
-            IRF to use
+        irf : str or Path
+            Path to the IRF file.
         observatory : str
-            Observatory name [see `~gammapy.data.observatory_locations`]
-        duration : int
-            Observation duration in hours
-        radius : float
-            On region radius in degrees
-        e_min : float
-            Minimum energy in TeV
-        e_max : float
-            Maximum energy in TeV
-        sigma : float
-            Minimum significance
-        bins : int
-            Number of energy bins
-        offset : float
-            Offset in degrees
-        acceptance : float
-            On region acceptance
-        acceptance_off : float
-            Off region acceptance
-        bkg_syst_fraction : float
-            Fraction of background counts above which the number of gamma-rays is
+            Name of the observatory.
+        duration : `~astropy.units.Quantity`
+            Observation duration.
+        radius : `~astropy.units.Quantity`
+            Radius of the region of interest.
+        min_energy : `~astropy.units.Quantity`
+            Minimum energy of the energy range.
+        max_energy : `~astropy.units.Quantity`
+            Maximum energy of the energy range.
+        model : `~gammapy.modeling.models.SpectralModel`, str or None, optional
+            Spectral model to use for sensitivity estimation.
+        source_ra : float, optional
+            Right ascension of the source in degrees.
+        source_dec : float, optional
+            Declination of the source in degrees.
+        sigma : float, optional
+            Significance level for sensitivity estimation.
+        n_bins : int, optional
+            Number of energy bins.
+        offset : float, optional
+            Offset of the source position from the pointing position in degrees.
+        gamma_min : int, optional
+            Minimum number of gamma-rays per bin
+        acceptance : float, optional
+            Acceptance for the on-region.
+        acceptance_off : float, optional
+            Acceptance for the off-region.
+        bkg_syst_fraction : float, optional
+            Fractional systematic uncertainty on the background estimation.
 
         Returns
         -------
@@ -403,103 +435,82 @@ class SensitivityGammapy:
             Integral sensitivity in units of cm^-2 s^-1
         """
         # check that IRF file exists
-        if isinstance(irf, dict):
-            irfs = irf
-        else:
-            irf = Path(irf)
-            if not irf.exists():
-                raise FileNotFoundError(f"IRF file not found: {irf}")
+        irf = Path(irf)
+        
+        # Load IRFs
+        irfs = load_irf_dict_from_file(irf)
 
         # check units
-        if duration.unit.physical_type != "time":
-            raise ValueError(f"duration must be a time quantity, got {duration}")
-        else:
-            duration = duration.to("s")
-        if radius.unit.physical_type != "angle":
-            raise ValueError(f"radius must be an angle quantity, got {radius}")
-        else:
-            radius = radius.to("deg")
-        if min_energy.unit.physical_type != "energy":
-            raise ValueError(f"min_energy must be an energy quantity, got {min_energy}")
-        else:
-            min_energy = min_energy.to("TeV")
-        if max_energy.unit.physical_type != "energy":
-            raise ValueError(f"max_energy must be an energy quantity, got {max_energy}")
-        else:
-            max_energy = max_energy.to("TeV")
+        duration = duration.to("s")
+        radius = radius.to("deg")
+        min_energy = min_energy.to("TeV")
+        max_energy = max_energy.to("TeV")
+        offset = offset.to("deg")
+        source_ra = source_ra * u.deg
+        source_dec = source_dec * u.deg
+        
+        if not n_bins:
+            # decide n_bins based on CTA's 5/decade rule
+            n_bins = int(np.log10(max_energy / min_energy) * 5)
+        
+        # check combination of sensitivity type and return type
+        if sensitivity_type == "differential":
+            return_type = "table"
             
-        # Load IRFs
-        if not isinstance(irf, dict):
-            irfs = load_irf_dict_from_file(irf)
-
-        # Define energy axis
-        energy_axis = MapAxis.from_energy_bounds(
-            min_energy, max_energy, bins, unit=u.TeV, name="energy"
-        )
-
+        if sensitivity_type not in ["differential", "integral"]:
+            raise ValueError(f"sensitivity_type must be 'differential' or 'integral', got {sensitivity_type}")
+        if return_type not in ["e2dnde", "energy_flux", "photon_flux", "table"]:
+            raise ValueError(f"return_type must be 'e2dnde', 'energy_flux', 'photon_flux', or 'table', got {return_type}")
+        
+        # print(f"Calculating {sensitivity_type} sensitivity, returning {return_type}")
+        
+        energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)
         energy_axis_true = MapAxis.from_energy_bounds(
-            "0.01 TeV", "100 TeV", nbin=100, name="energy_true"
+            0.01 * u.TeV, 100 * u.TeV, nbin=100, name="energy_true"
         )
 
-        # Define region
-        fixed_icrs = SkyCoord(source_ra, source_dec, unit="deg", frame="icrs")
-        pointing = FixedPointingInfo(fixed_icrs=fixed_icrs)
-        offset_pointing = SkyCoord(
-            source_ra, source_dec + offset, unit="deg", frame="icrs"
+        pointing = SkyCoord(ra=source_ra, dec=source_dec)
+        pointing_info = FixedPointingInfo(fixed_icrs=pointing)
+
+        source_position = pointing.directional_offset_by(0 * u.deg, offset)
+        on_region_radius = 0.1 * u.deg
+        on_region = CircleSkyRegion(source_position, radius=on_region_radius)
+
+        geom = RegionGeom.create(on_region, axes=[energy_axis])
+
+        # extract 1D IRFs
+        location = observatory_locations[observatory]
+        obs = Observation.create(
+            pointing=pointing_info, irfs=irfs, livetime=duration, location=location
         )
         
+        empty_dataset = SpectrumDataset.create(geom=geom, energy_axis_true=energy_axis_true)
+        
+        
+        # create a bkg model if not included
         if irfs.get("bkg") is not None:
-            region = CircleSkyRegion(center=offset_pointing, radius=radius)
-        else:
-            region = PointSkyRegion(offset_pointing)
-        geom = RegionGeom.create(region, axes=[energy_axis])
-
-        # define power law dataset
-        if model == "powerlaw":
-            model = PowerLawSpectralModel(
-                index=2.1, amplitude="5.7e-13 cm-2 s-1 TeV-1", reference="1 TeV"
-            )
-
-        # Define observation
-        location = observatory_locations[observatory]
-        # pointing = SkyCoord("0 deg", "0 deg")
-        obs: Observation = Observation.create(
-            pointing=pointing, irfs=irfs, livetime=duration, location=location
-        )
-
-        ## Correct for energy dependent region size
-        # Define containment
-        if irfs.get("bkg") is not None:
-            
-            # Define empty dataset
-            empty_dataset = SpectrumDataset.create(
-                geom=geom, energy_axis_true=energy_axis_true
-            )
-
-            # Create dataset
             spectrum_maker = SpectrumDatasetMaker(
-                selection=["exposure", "edisp", "background"]
+                selection=["exposure", "edisp", "background"],
+                containment_correction=False,
             )
             dataset = spectrum_maker.run(empty_dataset, obs)
-
+            
             containment = 0.68
 
             # correct exposure
             dataset.exposure *= containment
 
-            # Define on region radius
+            # correct background estimation
             on_radii = obs.psf.containment_radius(
-                energy_true=energy_axis.center, offset=offset * u.deg, fraction=containment
+                energy_true=energy_axis.center, offset=offset, fraction=containment
             )
-
             factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
             dataset.background *= factor.value.reshape((-1, 1, 1))
-
+            
             dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
                 dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
             )
         else:
-            empty_dataset = SpectrumDataset.create(geom=geom, energy_axis_true=energy_axis_true)
             spectrum_maker = SpectrumDatasetMaker(
                 containment_correction=False, selection=["counts", "exposure", "edisp"]
             )
@@ -513,15 +524,51 @@ class SensitivityGammapy:
             )
             # fill the OFF counts
             dataset_on_off = bkg_maker.run(dataset, irf["obs"])
-
-        ## Calculate sensitivity
+        
         sensitivity_estimator = SensitivityEstimator(
-            spectrum=model,
-            gamma_min=5,
-            n_sigma=sigma,
-            bkg_syst_fraction=bkg_syst_fraction,
+            spectrum=model, gamma_min=gamma_min, n_sigma=sigma, bkg_syst_fraction=bkg_syst_fraction
         )
+        
+        if sensitivity_type == "integral" and return_type in ["e2dnde", "table"]:
+        
+            dataset_on_off_image = dataset_on_off.to_image()
+            
+            # get the integral flux sensitivity
+            sensitivity_table = sensitivity_estimator.run(dataset_on_off_image)
+            
+            if return_type == "table":
+                return sensitivity_table
+            
+            # get e2dnde
+            e2dnde = sensitivity_table["e2dnde"].data[0] * sensitivity_table["e2dnde"].unit
+            e2dnde = e2dnde.to("erg / (cm2 s)")
+            
+            return e2dnde
+        
+        else:
+        
+            sensitivity_table = sensitivity_estimator.run(dataset_on_off)
+            
+            if sensitivity_type == "differential":
+                return sensitivity_table
+            
+            # integrate differential sensitivity
+            e2dnde = (np.array(sensitivity_table['e2dnde'].tolist()) * sensitivity_table['e2dnde'].unit).to("erg / (cm2 s)")
+            E_ref = (np.array(sensitivity_table['e_ref'].tolist()) * sensitivity_table['e_ref'].unit).to("erg")
+            E_min_diff = (np.array(sensitivity_table['e_min'].tolist()) * sensitivity_table['e_min'].unit).to("erg")
+            E_max_diff = (np.array(sensitivity_table['e_max'].tolist()) * sensitivity_table['e_max'].unit).to("erg")
+            
+            # calculate integral sensitivity
+            integral_sensitivity = (e2dnde * (1/E_ref) * (E_max_diff - E_min_diff)).sum().to("erg / (cm2 s)")
 
-        sensitivity_table = sensitivity_estimator.run(dataset_on_off)
-
-        return sensitivity_table
+            if return_type == "energy_flux":
+                return integral_sensitivity
+            
+            photon_flux = (e2dnde * (1/(E_ref**2)) * (E_max_diff - E_min_diff)).sum() * u.Unit("1 / (cm2 s)")
+            
+            if return_type == "photon_flux":
+                return photon_flux
+            
+            return integral_sensitivity, photon_flux
+                        
+            
