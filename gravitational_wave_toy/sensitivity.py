@@ -294,8 +294,6 @@ class SensitivityGammapy:
             )
 
             sensitivity_curve.append(s)
-            
-        print(sensitivity_curve)
 
         self._sensitivity_unit = sensitivity_curve[0].unit
         self._sensitivity_curve = (
@@ -461,8 +459,6 @@ class SensitivityGammapy:
             raise ValueError(f"sensitivity_type must be 'differential' or 'integral', got {sensitivity_type}")
         if return_type not in ["e2dnde", "energy_flux", "photon_flux", "table"]:
             raise ValueError(f"return_type must be 'e2dnde', 'energy_flux', 'photon_flux', or 'table', got {return_type}")
-        
-        # print(f"Calculating {sensitivity_type} sensitivity, returning {return_type}")
         
         energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)
         energy_axis_true = MapAxis.from_energy_bounds(
