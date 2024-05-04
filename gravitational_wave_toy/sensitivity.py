@@ -16,7 +16,7 @@ from gammapy.data import (
     observatory_locations,
 )
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
-from gammapy.estimators import SensitivityEstimator
+from gammapy.estimators import SensitivityEstimator, FluxPoints
 from gammapy.irf import load_irf_dict_from_file
 from gammapy.makers import (
     ReflectedRegionsBackgroundMaker,
@@ -301,11 +301,10 @@ class SensitivityGammapy:
                 mode="sensitivity",
                 offset=offset,
                 bins=n_energy_bins,
-                return_type="energy_flux",
                 **kwargs,
             )
 
-            sensitivity_curve.append(s)
+            sensitivity_curve.append(s["integral_sensitivity"])
 
         self._sensitivity_unit = sensitivity_curve[0].unit
         self._sensitivity_curve = (
@@ -329,9 +328,6 @@ class SensitivityGammapy:
         redshift: float = 0.0,
         mode: Literal["sensitivity", "table"] = "sensitivity",
         sensitivity_type: Literal["integral", "differential"] = "integral",
-        return_type: Literal[
-            "e2dnde", "energy_flux", "photon_flux", "table", "all"
-        ] = "energy_flux",
         bins: int | None = 10,
         **kwargs,
     ) -> float:
@@ -376,7 +372,6 @@ class SensitivityGammapy:
             model=t_model,
             n_bins=bins,
             sensitivity_type=sensitivity_type,
-            return_type=return_type,
             **kwargs,
         )
 
@@ -401,9 +396,6 @@ class SensitivityGammapy:
         acceptance_off: float = 5,
         bkg_syst_fraction: float = 0.05,
         sensitivity_type: Literal["differential", "integral"] = "integral",
-        return_type: Literal[
-            "e2dnde", "energy_flux", "photon_flux", "table", "all"
-        ] = "energy_flux",
     ) -> u.Quantity | Table:
         """
         Calculate the integral sensitivity for a given set of parameters.
@@ -448,6 +440,7 @@ class SensitivityGammapy:
         sensitivity : `~astropy.units.Quantity`
             Integral sensitivity in units of cm^-2 s^-1
         """
+        
         # check that IRF file exists
         irf = Path(irf)
 
@@ -467,17 +460,9 @@ class SensitivityGammapy:
             # decide n_bins based on CTA's 5/decade rule
             n_bins = int(np.log10(max_energy / min_energy) * 5)
 
-        # check combination of sensitivity type and return type
-        if sensitivity_type == "differential":
-            return_type = "table"
-
         if sensitivity_type not in ["differential", "integral"]:
             raise ValueError(
                 f"sensitivity_type must be 'differential' or 'integral', got {sensitivity_type}"
-            )
-        if return_type not in ["e2dnde", "energy_flux", "photon_flux", "table"]:
-            raise ValueError(
-                f"return_type must be 'e2dnde', 'energy_flux', 'photon_flux', or 'table', got {return_type}"
             )
 
         energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)
@@ -549,62 +534,75 @@ class SensitivityGammapy:
             bkg_syst_fraction=bkg_syst_fraction,
         )
 
-        if sensitivity_type == "integral" and return_type in ["e2dnde", "table"]:
-            dataset_on_off_image = dataset_on_off.to_image()
+        sensitivity_table = sensitivity_estimator.run(dataset_on_off)
 
-            # get the integral flux sensitivity
-            sensitivity_table = sensitivity_estimator.run(dataset_on_off_image)
+        if sensitivity_type == "differential":
+            return sensitivity_table
+        
+        # filter out insane rows where e2dnde > 1 or == inf
+        # while np.any([sensitivity_table["e2dnde"] > 1, sensitivity_table["e2dnde"] == np.inf, sensitivity_table["background"] == 0]):
+        #     for i, row in enumerate(sensitivity_table):
+        #         if row["e2dnde"] > 1 or row["e2dnde"] == np.inf or row["background"] == 0: 
+        #             sensitivity_table.remove_row(i)
+        #             break
 
-            if return_type == "table":
-                return sensitivity_table
+        # integrate differential sensitivity
+        e2dnde = (
+            np.array(sensitivity_table["e2dnde"].tolist())
+            * sensitivity_table["e2dnde"].unit
+        ).to("erg / (cm2 s)")
+        E_ref = (
+            np.array(sensitivity_table["e_ref"].tolist())
+            * sensitivity_table["e_ref"].unit
+        ).to("erg")
+        E_min_diff = (
+            np.array(sensitivity_table["e_min"].tolist())
+            * sensitivity_table["e_min"].unit
+        ).to("erg")
+        E_max_diff = (
+            np.array(sensitivity_table["e_max"].tolist())
+            * sensitivity_table["e_max"].unit
+        ).to("erg")
 
-            # get e2dnde
-            e2dnde = (
-                sensitivity_table["e2dnde"].data[0] * sensitivity_table["e2dnde"].unit
-            )
-            e2dnde = e2dnde.to("erg / (cm2 s)")
+        scale_factor = e2dnde / (model(E_ref).to("1 / (erg cm2 s)")  * (E_ref**2))
 
-            return e2dnde
+        spectrum_flux = model.integral(
+            energy_min=E_min_diff.to("TeV"),
+            energy_max=E_max_diff.to("TeV"),
+        ).to("1 / (cm2 s)")    
 
-        else:
-            sensitivity_table = sensitivity_estimator.run(dataset_on_off)
+        spectrum_energy_flux = model.energy_flux(
+            energy_min=E_min_diff.to("TeV"),
+            energy_max=E_max_diff.to("TeV"),
+        ).to("erg / (cm2 s)")
 
-            if sensitivity_type == "differential":
-                return sensitivity_table
+        photon_flux = scale_factor * spectrum_flux
+        energy_flux = scale_factor * spectrum_energy_flux
 
-            # integrate differential sensitivity
-            e2dnde = (
-                np.array(sensitivity_table["e2dnde"].tolist())
-                * sensitivity_table["e2dnde"].unit
-            ).to("erg / (cm2 s)")
-            E_ref = (
-                np.array(sensitivity_table["e_ref"].tolist())
-                * sensitivity_table["e_ref"].unit
-            ).to("erg")
-            E_min_diff = (
-                np.array(sensitivity_table["e_min"].tolist())
-                * sensitivity_table["e_min"].unit
-            ).to("erg")
-            E_max_diff = (
-                np.array(sensitivity_table["e_max"].tolist())
-                * sensitivity_table["e_max"].unit
-            ).to("erg")
+        # differential sensitivity 'across one bin'
+        integral_sensitivity = (
+            (e2dnde * (1 / E_ref) * (E_max_diff - E_min_diff))
+            .sum()
+            .to("erg / (cm2 s)")
+        )
+        
+        total_photon_flux = photon_flux.sum()
+        total_energy_flux = energy_flux.sum()
+        
+        # get the integral flux sensitivity with gammapy's recommended method
+        dataset_on_off_image = dataset_on_off.to_image()
+        int_sensitivity_table = sensitivity_estimator.run(dataset_on_off_image)
+        
+        flux_points = FluxPoints.from_table(
+            int_sensitivity_table, sed_type="e2dnde", reference_model=sensitivity_estimator.spectrum
+        )
 
-            # calculate integral sensitivity
-            integral_sensitivity = (
-                (e2dnde * (1 / E_ref) * (E_max_diff - E_min_diff))
-                .sum()
-                .to("erg / (cm2 s)")
-            )
-
-            if return_type == "energy_flux":
-                return integral_sensitivity
-
-            photon_flux = (
-                e2dnde * (1 / (E_ref**2)) * (E_max_diff - E_min_diff)
-            ).sum() * u.Unit("1 / (cm2 s)")
-
-            if return_type == "photon_flux":
-                return photon_flux
-
-            return integral_sensitivity, photon_flux
+        # integral sensitivity
+        image_integral_sensitivity = np.squeeze(flux_points.flux.quantity)
+        
+        return {
+            "integral_sensitivity": integral_sensitivity,
+            "image_integral_sensitivity": image_integral_sensitivity,
+            "photon_flux": total_photon_flux,
+            "energy_flux": total_energy_flux,
+        }
