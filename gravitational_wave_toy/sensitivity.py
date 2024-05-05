@@ -271,6 +271,7 @@ class SensitivityGammapy:
         sensitivity_points: int | None = None,
         offset: u.Quantity = 0.0 * u.deg,
         n_energy_bins: int | None = None,
+        method: Literal["integral", "image", "photon_flux", "energy_flux"] = "integral",
         **kwargs,
     ):
         if not sensitivity_points:
@@ -285,6 +286,13 @@ class SensitivityGammapy:
                 * u.s
             )
             self.times = times
+
+        if method not in ["integral", "image", "photon_flux", "energy_flux"]:
+            raise TypeError(f'Method must be one of ["integral", "image", "photon_flux", "energy_flux"], {method} not valid.')
+        elif method == "integral":
+            method = "integral_sensitivity"
+        elif method == "image":
+            method = "image_integral_sensitivity"
 
         sensitivity_curve = []
 
@@ -304,7 +312,7 @@ class SensitivityGammapy:
                 **kwargs,
             )
 
-            sensitivity_curve.append(s["integral_sensitivity"])
+            sensitivity_curve.append(s[method])
 
         self._sensitivity_unit = sensitivity_curve[0].unit
         self._sensitivity_curve = (
@@ -434,6 +442,8 @@ class SensitivityGammapy:
             Acceptance for the off-region.
         bkg_syst_fraction : float, optional
             Fractional systematic uncertainty on the background estimation.
+        sensitivity_type : str, optional
+            Type of sensitivity to calculate, either 'differential' or 'integral'.
 
         Returns
         -------
@@ -591,18 +601,22 @@ class SensitivityGammapy:
         
         # get the integral flux sensitivity with gammapy's recommended method
         dataset_on_off_image = dataset_on_off.to_image()
-        int_sensitivity_table = sensitivity_estimator.run(dataset_on_off_image)
+        int_sesitivity_estimator = SensitivityEstimator(
+            spectrum=model, gamma_min=gamma_min, n_sigma=sigma, bkg_syst_fraction=bkg_syst_fraction
+        )
+        int_sensitivity_table = int_sesitivity_estimator.run(dataset_on_off_image)
         
         flux_points = FluxPoints.from_table(
-            int_sensitivity_table, sed_type="e2dnde", reference_model=sensitivity_estimator.spectrum
+            int_sensitivity_table, sed_type="e2dnde", reference_model=int_sesitivity_estimator.spectrum
         )
 
         # integral sensitivity
-        image_integral_sensitivity = np.squeeze(flux_points.flux.quantity)
+        image_integral_sensitivity = np.squeeze(flux_points.flux.quantity).to("1 / (cm2 s)")
         
         return {
             "integral_sensitivity": integral_sensitivity,
             "image_integral_sensitivity": image_integral_sensitivity,
             "photon_flux": total_photon_flux,
             "energy_flux": total_energy_flux,
+            "table": sensitivity_table,
         }
