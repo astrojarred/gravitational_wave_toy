@@ -540,11 +540,11 @@ class SensitivityGammapy:
             return sensitivity_table
         
         # filter out insane rows where e2dnde > 1 or == inf
-        # while np.any([sensitivity_table["e2dnde"] > 1, sensitivity_table["e2dnde"] == np.inf, sensitivity_table["background"] == 0]):
-        #     for i, row in enumerate(sensitivity_table):
-        #         if row["e2dnde"] > 1 or row["e2dnde"] == np.inf or row["background"] == 0: 
-        #             sensitivity_table.remove_row(i)
-        #             break
+        while np.any([sensitivity_table["e2dnde"] > 1, sensitivity_table["e2dnde"] == np.inf, sensitivity_table["background"] == 0]):
+            for i, row in enumerate(sensitivity_table):
+                if row["e2dnde"] > 1 or row["e2dnde"] == np.inf or row["background"] == 0: 
+                    sensitivity_table.remove_row(i)
+                    break
 
         # integrate differential sensitivity
         e2dnde = (
