@@ -411,13 +411,14 @@ class GRB:
         sens_type = (
             "gammapy" if isinstance(sensitivity, SensitivityGammapy) else "ctools"
         )
-        # CTOOLS: 1 / (cm2)   || GAMMAPY: GeV / (cm2)
-        fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
-
-        # CTOOLS: 1 / (cm2 s)   || GAMMAPY: GeV / (cm2 s)
-        average_flux = fluence / (stop_time - start_time)
 
         if sens_type == "ctools":
+            # CTOOLS: 1 / (cm2)   || GAMMAPY: GeV / (cm2)
+            fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
+
+            # CTOOLS: 1 / (cm2 s)   || GAMMAPY: GeV / (cm2 s)
+            average_flux = fluence / (stop_time - start_time)
+            
             # calculate photon flux [ 1 / (cm2 s) ]
             photon_flux = sensitivity.get(t=(stop_time - start_time))
             visible = average_flux > photon_flux
@@ -428,12 +429,32 @@ class GRB:
             )
 
         else:  # gammapy
-            e2dnde = sensitivity.get(
-                t=(stop_time - start_time),
-            ).to("GeV / (cm2 s)")
+            
+            if sensitivity._sensitivity_unit == "erg / (cm2 s)":
+                # GeV / (cm2)
+                fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
+                
+                # GeV / (cm2 s)
+                average_flux = fluence / (stop_time - start_time)
 
-            visible = average_flux > e2dnde
-            difference = average_flux - e2dnde
+                e2dnde = sensitivity.get(
+                    t=(stop_time - start_time),
+                ).to("GeV / (cm2 s)")
+
+                visible = average_flux > e2dnde
+                difference = average_flux - e2dnde
+            else:
+                # 1 / (cm2) 
+                fluence = self.get_fluence(start_time, stop_time, mode="ctools")
+
+                # 1 / (cm2 s)
+                average_flux = fluence / (stop_time - start_time)
+                
+                integral_sensitivity = sensitivity.get(
+                    t=(stop_time - start_time),
+                ).to("1 / (cm2 s)")
+                visible = average_flux > integral_sensitivity
+                difference = average_flux - integral_sensitivity
 
             log.debug(
                 f"GAMMAPY:    visible:{visible} avgflux={average_flux}, sensitivity={sensitivity}"
