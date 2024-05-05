@@ -243,10 +243,33 @@ class SensitivityGammapy:
             self._sensitivity_curve = []
             self._sensitivity_unit = None
             self._sensitivity = None
+            
+        self._sensitivity_information = []
 
     @property
     def sensitivity_curve(self):
         return self._sensitivity_curve
+    
+    @property
+    def image_sensitivity_curve(self):
+        if not self._sensitivity_information:
+            return []
+        unit = self._sensitivity_information[0]["image_integral_sensitivity"].unit
+        return [s["image_integral_sensitivity"].value for s in self._sensitivity_information] * unit
+    
+    @property
+    def photon_flux_curve(self):
+        if not self._sensitivity_information:
+            return []
+        unit = self._sensitivity_information[0]["photon_flux"].unit
+        return [s["photon_flux"].value for s in self._sensitivity_information] * unit
+    
+    @property
+    def energy_flux_curve(self):
+        if not self._sensitivity_information:
+            return []
+        unit = self._sensitivity_information[0]["energy_flux"].unit
+        return [s["energy_flux"].value for s in self._sensitivity_information] * unit
 
     def get(self, t: u.Quantity | int | float):
         if isinstance(t, (int, float)):
@@ -312,6 +335,7 @@ class SensitivityGammapy:
                 **kwargs,
             )
 
+            self._sensitivity_information.append(s)
             sensitivity_curve.append(s[method])
 
         self._sensitivity_unit = sensitivity_curve[0].unit
