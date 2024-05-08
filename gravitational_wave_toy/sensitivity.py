@@ -59,7 +59,7 @@ class Sensitivity:
         min_time: u.Quantity = 1 * u.s,
         max_time: u.Quantity = 43200 * u.s,
         ebl: str | None = None,
-        sensitivity_points: int = 16,
+        n_sensitivity_points: int = 16,
         sensitivity_curve: list | None = None,
         photon_flux_curve: list | None = None,
     ) -> None:
@@ -120,7 +120,7 @@ class Sensitivity:
             np.logspace(
                 np.log10(self.min_time.value),
                 np.log10(self.max_time.value),
-                sensitivity_points,
+                n_sensitivity_points,
             ).round()
             * u.s
         )
@@ -205,22 +205,24 @@ class Sensitivity:
     def get_sensitivity_curve(
         self,
         grb: "GRB",
-        sensitivity_points: int | None = None,
+        n_sensitivity_points: int | None = None,
         offset: u.Quantity = 0.0 * u.deg,
         n_bins: int | None = None,
+        starting_amplitude: u.Quantity = 1e-12 * u.Unit("TeV-1 cm-2 s-1"),
+        reference: u.Quantity = 1 * u.TeV,
         **kwargs,
     ):
-        if not sensitivity_points:
+        if not n_sensitivity_points:
             times = self.times
         else:
-            times = round((
+            times = (
                 np.logspace(
                     np.log10(self.min_time.value),
                     np.log10(self.max_time.value),
-                    sensitivity_points,
+                    n_sensitivity_points,
                 ).round()
                 * u.s
-            ))
+            )
             self.times = times
 
         sensitivity_curve = []
@@ -233,8 +235,8 @@ class Sensitivity:
             s = self.get_sensitivity_from_model(
                 t=t,
                 index=grb.get_spectral_index(t),
-                amplitude=grb.get_spectral_amplitude(t),
-                reference=1 * u.GeV,
+                amplitude=starting_amplitude,
+                reference=reference,
                 redshift=grb.dist.z,
                 sensitivity_type="integral",
                 offset=offset,
@@ -287,11 +289,11 @@ class Sensitivity:
         t = t.to("s")
 
         try:
-            amplitude = amplitude.to("GeV-1 cm-2 s-1")
+            amplitude = amplitude.to("TeV-1 cm-2 s-1")
         except u.UnitConversionError:
             raise ValueError(f"amplitude must be a flux quantity, got {amplitude}")
         if reference is None:
-            reference = 1 * u.GeV
+            reference = 1 * u.TeV
 
         t_model = PowerLawSpectralModel(
             index=-index,

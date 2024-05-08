@@ -191,11 +191,10 @@ class GRB:
                 (np.log10(energy.value), np.log10(time.value))
             ) * u.Unit("1 / (cm2 s GeV)")
 
-    def get_gammapy_spectrum(self, time: u.Quantity, reference: u.Quantity = 1 * u.GeV):
+    def get_gammapy_spectrum(self, time: u.Quantity, amplitude: u.Quantity | None = None, reference: u.Quantity = 1 * u.TeV):
         return PowerLawSpectralModel(
             index=-self.get_spectral_index(time),
-            # amplitude=self.get_spectral_amplitude(time).to("cm-2 s-1 GeV-1"),
-            amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 GeV-1"),
+            amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 TeV-1") if amplitude is None else amplitude,
             reference=reference,
         )
 
