@@ -281,7 +281,7 @@ class GRB:
         self,
         time: u.Quantity,
         first_energy_bin: u.Quantity,
-        mode: Literal["gammapy", "ctools"] = "gammapy",
+        mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
         use_model: bool = True,
     ):
         if not time.unit.physical_type == "time":
@@ -314,7 +314,7 @@ class GRB:
             if self.ebl is not None:
                 model = model * self.ebl
             
-            if mode == "ctools":
+            if mode == "photon_flux":
                 integral_spectrum = model.integral(energy_min=self.min_energy, energy_max=self.max_energy).to("cm-2 s-1")
             else:
                 integral_spectrum = model.energy_flux(energy_min=self.min_energy, energy_max=self.max_energy).to("GeV cm-2 s-1")
@@ -326,7 +326,7 @@ class GRB:
         self,
         start_time: u.Quantity,
         stop_time: u.Quantity,
-        mode: Literal["gammapy", "ctools"] = "gammapy",
+        mode: Literal["sensitivity", "photon_flux"] = "sensitivity"
     ):
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
@@ -338,7 +338,7 @@ class GRB:
 
         first_energy_bin = min(self.energy)
 
-        unit = u.Unit("cm-2") if mode == "ctools" else u.Unit("GeV cm-2")
+        unit = u.Unit("cm-2") if mode == "photon_flux" else u.Unit("GeV cm-2")
         fluence = (
             integrate.quad(
                 lambda time: self.get_integral_spectrum(
@@ -397,6 +397,7 @@ class GRB:
         start_time: u.Quantity,
         stop_time: u.Quantity,
         sensitivity: Sensitivity,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
         mode: Literal["bool", "difference"] = "bool",
     ) -> bool:
         if not start_time.unit.physical_type == "time":
@@ -407,58 +408,24 @@ class GRB:
         start_time = start_time.to("s")
         stop_time = stop_time.to("s")
 
-        # Interpolation and integration of the flux with time
-        sens_type = (
-            "gammapy" if isinstance(sensitivity, Sensitivity) else "ctools"
+        # Interpolation and integration of the flux with time 
+        # GeV / (cm2) or 1 / (cm2)
+        fluence = self.get_fluence(start_time, stop_time, mode=sensitivity_mode)
+        
+        # GeV / (cm2 s) or 1 / (cm2 s)
+        average_flux = fluence / (stop_time - start_time)
+
+        res = sensitivity.get(
+            t=(stop_time - start_time),
+            mode=sensitivity_mode,
+        ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
+
+        visible = average_flux > res
+        difference = average_flux - res
+
+        log.debug(
+            f"GAMMAPY:    visible:{visible} avgflux={average_flux}, sensitivity={sensitivity}"
         )
-
-        if sens_type == "ctools":
-            # CTOOLS: 1 / (cm2)   || GAMMAPY: GeV / (cm2)
-            fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
-
-            # CTOOLS: 1 / (cm2 s)   || GAMMAPY: GeV / (cm2 s)
-            average_flux = fluence / (stop_time - start_time)
-            
-            # calculate photon flux [ 1 / (cm2 s) ]
-            photon_flux = sensitivity.get(t=(stop_time - start_time))
-            visible = average_flux > photon_flux
-            difference = average_flux - photon_flux
-
-            log.debug(
-                f"CTOOLS:    visible:{visible} avgflux={average_flux}, photon_flux={photon_flux}"
-            )
-
-        else:  # gammapy
-            
-            if sensitivity._sensitivity_unit == "erg / (cm2 s)":
-                # GeV / (cm2)
-                fluence = self.get_fluence(start_time, stop_time, mode=sens_type)
-                
-                # GeV / (cm2 s)
-                average_flux = fluence / (stop_time - start_time)
-
-                e2dnde = sensitivity.get(
-                    t=(stop_time - start_time),
-                ).to("GeV / (cm2 s)")
-
-                visible = average_flux > e2dnde
-                difference = average_flux - e2dnde
-            else:
-                # 1 / (cm2) 
-                fluence = self.get_fluence(start_time, stop_time, mode="ctools")
-
-                # 1 / (cm2 s)
-                average_flux = fluence / (stop_time - start_time)
-                
-                integral_sensitivity = sensitivity.get(
-                    t=(stop_time - start_time),
-                ).to("1 / (cm2 s)")
-                visible = average_flux > integral_sensitivity
-                difference = average_flux - integral_sensitivity
-
-            log.debug(
-                f"GAMMAPY:    visible:{visible} avgflux={average_flux}, sensitivity={sensitivity}"
-            )
 
         if mode == "bool":
             return visible
@@ -538,6 +505,7 @@ class GRB:
         max_time: u.Quantity = 12 * u.hour,
         target_precision: u.Quantity = 1 * u.s,
         max_iter=100,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
         """Modified version to increase timestep along with time size"""
 
@@ -580,7 +548,7 @@ class GRB:
             delay = start_time
 
             # check maximum time
-            visible = self.check_if_visible(delay, max_time + delay, sensitivity)
+            visible = self.check_if_visible(delay, max_time + delay, sensitivity, sensitivity_mode=sensitivity_mode)
 
             # not visible even after maximum observation time
             if not visible:
