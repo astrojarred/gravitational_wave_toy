@@ -121,7 +121,7 @@ class Sensitivity:
                 np.log10(self.min_time.value),
                 np.log10(self.max_time.value),
                 sensitivity_points,
-            )
+            ).round()
             * u.s
         )
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
