@@ -418,11 +418,10 @@ class Sensitivity:
         
 
         # dataset.models[0].spectral_model.amplitude.value = norm
-    
-        if hasattr(dataset.models[0], "_spectral_model"):
-            dataset.models[0]._spectral_model.model1.amplitude.value = norm
+        if isinstance(dataset.models[0]._spectral_model, PowerLawSpectralModel):
+            dataset.models[0]._spectral_model.amplitude.value = norm
         else:
-            dataset.models[0].amplitude.value = norm
+            dataset.models[0]._spectral_model.model1.amplitude.value = norm
                 
         
         # TODO: Check that the inputs here are correct
