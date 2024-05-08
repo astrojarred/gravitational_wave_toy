@@ -15,7 +15,6 @@ def get_row(
     site: str,
     zenith: int,
     ebl: bool = False,
-    software: str = "gammapy",
     config: str = "alpha",
     duration: int = 1800,
 ):
@@ -26,7 +25,6 @@ def get_row(
         & (sens_df["irf_site"] == site)
         & (sens_df["irf_zenith"] == zenith)
         & (sens_df["irf_ebl"] == ebl)
-        & (sens_df["sensitivity_software"] == software)
         & (sens_df["irf_config"] == config)
         & (sens_df["irf_duration"] == duration)
     ]
@@ -91,11 +89,10 @@ def get_sensitivity(
     sens_df: pd.DataFrame | None = None,
     sens_curve: list | None = None,
     ebl: bool = False,
-    software: str = "gammapy",
     config: str = "alpha",
     duration: int = 1800,
     radius: u.Quantity = 3.0 * u.deg,
-    min_energy: u.Quantity = 0.03 * u.TeV,
+    min_energy: u.Quantity = 0.02 * u.TeV,
     max_energy: u.Quantity = 10 * u.TeV,
 ):
     
@@ -109,7 +106,6 @@ def get_sensitivity(
             site=site,
             zenith=zenith,
             ebl=ebl,
-            software=software,
             config=config,
             duration=duration,
         )
@@ -119,20 +115,13 @@ def get_sensitivity(
     else:
         curve = sens_curve
 
-    if software == "gammapy":
-        sens = sensitivity.SensitivityGammapy(
-            observatory=f"cta_{site}",
-            radius=radius,
-            min_energy=min_energy,
-            max_energy=max_energy,
-            sensitivity_curve=curve * u.Unit("erg cm-2 s-1"),
-        )
-    else:
-        sens = sensitivity.SensitivityCtools(
-            min_energy=min_energy,
-            max_energy=max_energy,
-            regression=curve,
-        )
+    sens = sensitivity.Sensitivity(
+        observatory=f"cta_{site}",
+        radius=radius,
+        min_energy=min_energy,
+        max_energy=max_energy,
+        sensitivity_curve=curve * u.Unit("erg cm-2 s-1"),
+    )
 
     return sens
 
@@ -147,11 +136,10 @@ def get_exposure(
     sens_curve: list | None = None,
     extrapolation_df: pd.DataFrame | None = None,
     ebl: str | None = None,
-    software: str = "gammapy",
     config: str = "alpha",
     duration: int = 1800,
     radius: u.Quantity = 3.0 * u.deg,
-    min_energy: u.Quantity = 0.03 * u.TeV,
+    min_energy: u.Quantity = 0.02 * u.TeV,
     max_energy: u.Quantity = 10 * u.TeV,
     target_precision: u.Quantity = 1 * u.s,
     max_time: u.Quantity = 12 * u.h,
@@ -217,7 +205,6 @@ def get_exposure(
         sens_df=sens_df,
         sens_curve=sens_curve,
         ebl=bool(ebl),
-        software=software,
         config=config,
         duration=duration,
         radius=radius,
