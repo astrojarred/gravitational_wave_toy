@@ -18,7 +18,7 @@ from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
 from .logging import logger
-from .sensitivity import SensitivityCtools, SensitivityGammapy
+from .sensitivity import Sensitivity
 
 log = logger(__name__)
 
@@ -396,7 +396,7 @@ class GRB:
         self,
         start_time: u.Quantity,
         stop_time: u.Quantity,
-        sensitivity: SensitivityCtools | SensitivityGammapy,
+        sensitivity: Sensitivity,
         mode: Literal["bool", "difference"] = "bool",
     ) -> bool:
         if not start_time.unit.physical_type == "time":
@@ -409,7 +409,7 @@ class GRB:
 
         # Interpolation and integration of the flux with time
         sens_type = (
-            "gammapy" if isinstance(sensitivity, SensitivityGammapy) else "ctools"
+            "gammapy" if isinstance(sensitivity, Sensitivity) else "ctools"
         )
 
         if sens_type == "ctools":
@@ -467,7 +467,7 @@ class GRB:
 
     def _bisect_find_zeros(
         self,
-        sensitivity: SensitivityCtools | SensitivityGammapy,
+        sensitivity: Sensitivity,
         start_time: u.Quantity,
         stop_time: u.Quantity,
         target_precision: u.Quantity,
@@ -531,7 +531,7 @@ class GRB:
 
     def observe(
         self,
-        sensitivity: SensitivityCtools | SensitivityGammapy,
+        sensitivity: Sensitivity,
         start_time: u.Quantity = 0 * u.s,
         min_energy: u.Quantity = None,
         max_energy: u.Quantity = None,
