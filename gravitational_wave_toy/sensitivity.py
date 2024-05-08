@@ -328,7 +328,7 @@ class Sensitivity:
                 min_energy=self.min_energy,
                 max_energy=self.max_energy,
                 model=t_model,
-                n_bins=bins,
+                n_bins=n_bins,
                 sensitivity_type=sensitivity_type,
                 **kwargs,
             )
