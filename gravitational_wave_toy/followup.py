@@ -215,7 +215,6 @@ def get_exposure(
         radius=radius,
         min_energy=min_energy,
         max_energy=max_energy,
-        sensitivity_mode=sensitivity_mode,
     )
 
     grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
@@ -227,6 +226,7 @@ def get_exposure(
         max_energy=max_energy,
         target_precision=target_precision,
         max_time=max_time,
+        sensitivity_mode=sensitivity_mode
     )
 
     return result
