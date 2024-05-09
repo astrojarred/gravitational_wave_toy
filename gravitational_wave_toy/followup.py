@@ -5,6 +5,7 @@ import pandas as pd
 from astropy import units as u
 from numpy import log10
 from scipy.interpolate import interp1d
+from typing import Literal
 
 from . import observe, sensitivity
 
@@ -88,6 +89,7 @@ def get_sensitivity(
     zenith: int,
     sens_df: pd.DataFrame | None = None,
     sens_curve: list | None = None,
+    photon_flux_curve: list | None = None,
     ebl: bool = False,
     config: str = "alpha",
     duration: int = 1800,
@@ -111,6 +113,7 @@ def get_sensitivity(
         )
 
         curve = row["sensitivity_curve"]
+        photon_flux_curve = row["photon_flux_curve"]
         
     else:
         curve = sens_curve
@@ -121,6 +124,7 @@ def get_sensitivity(
         min_energy=min_energy,
         max_energy=max_energy,
         sensitivity_curve=curve * u.Unit("erg cm-2 s-1"),
+        photon_flux_curve=photon_flux_curve * u.Unit("cm-2 s-1"),
     )
 
     return sens
@@ -143,6 +147,7 @@ def get_exposure(
     max_energy: u.Quantity = 10 * u.TeV,
     target_precision: u.Quantity = 1 * u.s,
     max_time: u.Quantity = 12 * u.h,
+    sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity"
 ):
     # check delay units
     if delay.unit.physical_type != "time":
@@ -210,6 +215,7 @@ def get_exposure(
         radius=radius,
         min_energy=min_energy,
         max_energy=max_energy,
+        sensitivity_mode=sensitivity_mode,
     )
 
     grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
