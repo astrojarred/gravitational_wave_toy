@@ -167,7 +167,7 @@ class GRB:
         if not energy.unit.physical_type == "energy":
             raise ValueError(f"energy must be an energy quantity, got {energy}")
 
-        energy.to("GeV")
+        energy = energy.to("GeV")
 
         if time is None:
             time = self.time
