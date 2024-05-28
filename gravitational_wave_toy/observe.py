@@ -506,7 +506,6 @@ class GRB:
         max_iter=100,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
-        """Modified version to increase timestep along with time size"""
 
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
@@ -623,3 +622,79 @@ class GRB:
             self.error_message = str(e)
 
             return self.output()
+        
+    def get_significance(
+        self,
+        start_time: u.Quantity,
+        stop_time: u.Quantity,
+        sensitivity: Sensitivity,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    ):
+        
+        if not start_time.unit.physical_type == "time":
+            raise ValueError(f"start_time must be a time quantity, got {start_time}")
+        if not stop_time.unit.physical_type == "time":
+            raise ValueError(f"stop_time must be a time quantity, got {stop_time}")
+
+        start_time = start_time.to("s")
+        stop_time = stop_time.to("s")
+        
+        fluence = self.get_fluence(start_time, stop_time, mode=sensitivity_mode)
+        average_flux = fluence / (stop_time - start_time)
+        sens = sensitivity.get(
+            t=(stop_time - start_time),
+            mode=sensitivity_mode,
+        ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
+        
+        # sens represents the 5sigma sensitivity curve
+        # and significance scales with sqrt(t) for a given flux
+        sig = 5 * (average_flux / sens)
+        
+        return sig
+        
+    def get_significance_evolution(
+        self,
+        sensitivity: Sensitivity,
+        start_time: u.Quantity,
+        max_time: u.Quantity = 12 * u.hour,
+        min_energy: u.Quantity = None,
+        max_energy: u.Quantity = None,
+        n_time_steps: int = 50,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    ):
+        
+        if not start_time.unit.physical_type == "time":
+            raise ValueError(f"start_time must be a time quantity, got {start_time}")
+
+        if not max_time.unit.physical_type == "time":
+            raise ValueError(f"max_time must be a time quantity, got {max_time}")
+
+        # set energy limits to match the sensitivity
+        if min_energy is None or max_energy is None:
+            self.min_energy, self.max_energy = sensitivity.energy_limits
+
+        if not self.min_energy.unit.physical_type == "energy":
+            raise ValueError(
+                f"min_energy must be an energy quantity, got {self.min_energy}"
+            )
+        if not self.max_energy.unit.physical_type == "energy":
+            raise ValueError(
+                f"max_energy must be an energy quantity, got {self.max_energy}"
+            )
+
+        self.min_energy = self.min_energy.to("GeV")
+        self.max_energy = self.max_energy.to("GeV")
+
+        start_time = start_time.to("s")
+        max_time = max_time.to("s")
+        
+        end_times = np.logspace(
+            np.log10(start_time.value),
+            np.log10(max_time.value),
+            n_time_steps,
+        )
+        
+        # calculate significance 
+        sig = np.array([self.get_significance(start_time, end_time * u.s, sensitivity, sensitivity_mode=sensitivity_mode) for end_time in end_times])
+        
+        return end_times, sig
