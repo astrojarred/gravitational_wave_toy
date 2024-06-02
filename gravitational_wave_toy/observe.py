@@ -4,7 +4,6 @@ from typing import Literal
 
 import astropy.units as u
 
-# %matplotlib inline
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.coordinates import Distance
@@ -503,10 +502,10 @@ class GRB:
         max_energy: u.Quantity = None,
         max_time: u.Quantity = 12 * u.hour,
         target_precision: u.Quantity = 1 * u.s,
+        n_time_steps: int = 100,
         max_iter=100,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
-        """Modified version to increase timestep along with time size"""
 
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
@@ -545,26 +544,73 @@ class GRB:
             # start the procedure
             self.start_time = start_time
             delay = start_time
-
-            # check maximum time
-            visible = self.check_if_visible(delay, max_time + delay, sensitivity, sensitivity_mode=sensitivity_mode)
-
-            # not visible even after maximum observation time
-            if not visible:
+            
+            ''' four cases:
+            1. average fluence is always above the sensitivity curve -> immediately detectable
+            2. average fluence is monotonically increasing -> intersection point is moment of detectability
+            3. average fluence is always below the sensitivity curve -> never detectable
+            4. average fluence crosses sensitivity curve multiple times -> first point where it is above sensitivity is the moment of detectability
+            '''
+            
+            # Check immediate detectability
+            visible = self.check_if_visible(delay, target_precision + delay, sensitivity, sensitivity_mode=sensitivity_mode)
+            
+            if visible:
+                self.end_time = target_precision + delay
+                self.obs_time = target_precision
+                self.seen = True
+                # print("Immediate detectability")
                 return self.output()
-
+            
+            # Perform an incremental search
+            time_steps = np.logspace(
+                np.log10(target_precision.value),
+                np.log10(max_time.value),
+                n_time_steps,
+            ) * u.s
+            
+            detected_in_scan = False
+            
+            for i, time_step in enumerate(time_steps):
+                
+                previous_time = start_time + time_step
+                
+                if i == (n_time_steps - 1):
+                    break
+                else:
+                    current_time = start_time + time_steps[i + 1]
+            
+                visible = self.check_if_visible(start_time, previous_time, sensitivity, sensitivity_mode=sensitivity_mode)
+                # print(f"Start time: {start_time}, Current time: {current_time}, Previous time: {previous_time}, {visible}")
+                
+                if visible:
+                    # print(f"Detected between {previous_time} and {current_time}")
+                    detected_in_scan = True
+                    break
+                
+            if not detected_in_scan:
+                self.end_time = -1 * u.s
+                self.obs_time = -1 * u.s
+                self.seen = False
+                # print("Never detectable")
+                return self.output()
+            
+            # Fine-tune search with bisection
+            # print(f"Fine-tuning search with bisection between {start_time} and {current_time}")
             end_time, seen = self._bisect_find_zeros(
-                sensitivity, start_time, max_time + start_time, target_precision, max_iter=max_iter
+                sensitivity, start_time, current_time, target_precision, max_iter=max_iter, lowest_possible=previous_time, highest_possible=current_time
             )
 
             if seen:
                 self.end_time = end_time
                 self.obs_time = end_time - start_time
                 self.seen = True
+                # print(f"Detected at {end_time}")
             else:
                 self.end_time = -1 * u.s
                 self.obs_time = -1 * u.s
                 self.seen = False
+                # print("Never detectable, but weirdly")
 
             # just return dict now
             return self.output()
@@ -576,3 +622,79 @@ class GRB:
             self.error_message = str(e)
 
             return self.output()
+        
+    def get_significance(
+        self,
+        start_time: u.Quantity,
+        stop_time: u.Quantity,
+        sensitivity: Sensitivity,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    ):
+        
+        if not start_time.unit.physical_type == "time":
+            raise ValueError(f"start_time must be a time quantity, got {start_time}")
+        if not stop_time.unit.physical_type == "time":
+            raise ValueError(f"stop_time must be a time quantity, got {stop_time}")
+
+        start_time = start_time.to("s")
+        stop_time = stop_time.to("s")
+        
+        fluence = self.get_fluence(start_time, stop_time, mode=sensitivity_mode)
+        average_flux = fluence / (stop_time - start_time)
+        sens = sensitivity.get(
+            t=(stop_time - start_time),
+            mode=sensitivity_mode,
+        ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
+        
+        # sens represents the 5sigma sensitivity curve
+        # and significance scales with sqrt(t) for a given flux
+        sig = 5 * (average_flux / sens)
+        
+        return sig
+        
+    def get_significance_evolution(
+        self,
+        sensitivity: Sensitivity,
+        start_time: u.Quantity,
+        max_time: u.Quantity = 12 * u.hour,
+        min_energy: u.Quantity = None,
+        max_energy: u.Quantity = None,
+        n_time_steps: int = 50,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    ):
+        
+        if not start_time.unit.physical_type == "time":
+            raise ValueError(f"start_time must be a time quantity, got {start_time}")
+
+        if not max_time.unit.physical_type == "time":
+            raise ValueError(f"max_time must be a time quantity, got {max_time}")
+
+        # set energy limits to match the sensitivity
+        if min_energy is None or max_energy is None:
+            self.min_energy, self.max_energy = sensitivity.energy_limits
+
+        if not self.min_energy.unit.physical_type == "energy":
+            raise ValueError(
+                f"min_energy must be an energy quantity, got {self.min_energy}"
+            )
+        if not self.max_energy.unit.physical_type == "energy":
+            raise ValueError(
+                f"max_energy must be an energy quantity, got {self.max_energy}"
+            )
+
+        self.min_energy = self.min_energy.to("GeV")
+        self.max_energy = self.max_energy.to("GeV")
+
+        start_time = start_time.to("s")
+        max_time = max_time.to("s")
+        
+        end_times = np.logspace(
+            np.log10(start_time.value),
+            np.log10(max_time.value),
+            n_time_steps,
+        )
+        
+        # calculate significance 
+        sig = np.array([self.get_significance(start_time, end_time * u.s, sensitivity, sensitivity_mode=sensitivity_mode) for end_time in end_times])
+        
+        return end_times, sig
