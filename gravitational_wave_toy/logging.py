@@ -1,10 +1,5 @@
 import logging
 
-# Set up logging
-logging.basicConfig(filename='./gwtoy.log',
-                    level=logging.DEBUG,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
-
 class logger:
     def __init__(self, name: str, filename: str = "./gwtoy.log", level: int = logging.INFO, file_level: int = logging.DEBUG) -> None:
         self.name = name
