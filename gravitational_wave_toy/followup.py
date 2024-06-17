@@ -6,10 +6,10 @@ from astropy import units as u
 from numpy import log10
 from scipy.interpolate import interp1d
 from typing import Literal
-
+import warnings
 from . import observe, sensitivity
 
-
+        
 def get_row(
     sens_df: pd.DataFrame,
     event_id: int,
@@ -147,7 +147,8 @@ def get_exposure(
     max_energy: u.Quantity = 10 * u.TeV,
     target_precision: u.Quantity = 1 * u.s,
     max_time: u.Quantity = 12 * u.h,
-    sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity"
+    sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    n_time_steps: int = 100,
 ):
     # check delay units
     if delay.unit.physical_type != "time":
@@ -219,14 +220,17 @@ def get_exposure(
 
     grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
 
-    result = grb.observe(
-        sens,
-        start_time=delay,
-        min_energy=min_energy,
-        max_energy=max_energy,
-        target_precision=target_precision,
-        max_time=max_time,
-        sensitivity_mode=sensitivity_mode
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', r'All-NaN slice encountered')
+        result = grb.observe(
+            sens,
+            start_time=delay,
+            min_energy=min_energy,
+            max_energy=max_energy,
+            target_precision=target_precision,
+            max_time=max_time,
+            sensitivity_mode=sensitivity_mode,
+            n_time_steps=n_time_steps,
+        )
 
     return result
