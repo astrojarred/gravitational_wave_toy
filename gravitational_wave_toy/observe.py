@@ -522,8 +522,6 @@ class GRB:
 
             end_time = round((first_root / target_precision).value) * target_precision
 
-            print(start_time, end_time)
-
             self.end_time = end_time
             self.obs_time = end_time - start_time
             self.seen = True
