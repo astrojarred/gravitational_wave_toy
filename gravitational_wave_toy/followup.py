@@ -148,7 +148,7 @@ def get_exposure(
     target_precision: u.Quantity = 1 * u.s,
     max_time: u.Quantity = 12 * u.h,
     sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
-    n_time_steps: int = 100,
+    n_time_steps: int = 10,
 ):
     # check delay units
     if delay.unit.physical_type != "time":
