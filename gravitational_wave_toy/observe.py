@@ -111,7 +111,7 @@ class GRB:
         loge = np.around(np.log10(self.energy.value), 1)
         logt = np.around(np.log10(self.time.value), 1)
 
-        x = np.around(np.linspace(min(loge), max(loge), resolution + 1), 1)
+        x = np.around(np.linspace(min(loge), max(loge), resolution + 1), 1)[::-1]
         y = np.around(np.linspace(min(logt), max(logt), resolution + 1), 1)
 
         points = []
@@ -123,7 +123,7 @@ class GRB:
         plt.ylabel("Log(E)")
         plt.imshow(
             np.log10(self.SpectralGrid(points)).reshape(resolution + 1, resolution + 1),
-            extent=(logt.min(), logt.max(), loge.max(), loge.min()),
+            extent=(logt.min(), logt.max(), loge.min(), loge.max()),
             cmap="viridis",
             aspect="auto",
         )
