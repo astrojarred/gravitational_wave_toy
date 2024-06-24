@@ -123,7 +123,7 @@ class GRB:
         plt.ylabel("Log(E)")
         plt.imshow(
             np.log10(self.SpectralGrid(points)).reshape(resolution + 1, resolution + 1),
-            extent=(logt.min(), logt.max(), loge.min(), loge.max()),
+            extent=(logt.min(), logt.max(), loge.max(), loge.min()),
             cmap="viridis",
             aspect="auto",
         )
