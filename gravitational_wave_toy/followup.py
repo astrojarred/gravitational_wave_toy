@@ -33,9 +33,10 @@ def get_row(
     if len(rows) < 1:
         raise ValueError("No sensitivity found with these values.")
     if len(rows) > 1:
-        print(
-            f"Warning: multiple ({len(rows)}) sensitivities found with these values. Will use first row."
-        )
+        # print(
+        #     f"Warning: multiple ({len(rows)}) sensitivities found with these values. Will use first row."
+        # )
+        pass
 
     return rows.iloc[0]
 
