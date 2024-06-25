@@ -1,9 +1,9 @@
+import math
 import os
 from pathlib import Path
 from typing import Literal
 
 import astropy.units as u
-
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.coordinates import Distance
@@ -13,6 +13,7 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
+from gammapy.utils.roots import find_roots
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
@@ -84,7 +85,7 @@ class GRB:
                     "Please set it to the path where the EBL data is stored. "
                     "You can copy EBL data from here: https://github.com/astrojarred/gravitational_wave_toy/tree/main/data"
                 )
-                
+
             self.ebl = EBLAbsorptionNormSpectralModel.read_builtin(
                 ebl,
                 redshift=self.dist.z,
@@ -110,7 +111,7 @@ class GRB:
         loge = np.around(np.log10(self.energy.value), 1)
         logt = np.around(np.log10(self.time.value), 1)
 
-        x = np.around(np.linspace(min(loge), max(loge), resolution + 1), 1)
+        x = np.around(np.linspace(min(loge), max(loge), resolution + 1), 1)[::-1]
         y = np.around(np.linspace(min(logt), max(logt), resolution + 1), 1)
 
         points = []
@@ -190,10 +191,17 @@ class GRB:
                 (np.log10(energy.value), np.log10(time.value))
             ) * u.Unit("1 / (cm2 s GeV)")
 
-    def get_gammapy_spectrum(self, time: u.Quantity, amplitude: u.Quantity | None = None, reference: u.Quantity = 1 * u.TeV):
+    def get_gammapy_spectrum(
+        self,
+        time: u.Quantity,
+        amplitude: u.Quantity | None = None,
+        reference: u.Quantity = 1 * u.TeV,
+    ):
         return PowerLawSpectralModel(
             index=-self.get_spectral_index(time),
-            amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 TeV-1") if amplitude is None else amplitude,
+            amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 TeV-1")
+            if amplitude is None
+            else amplitude,
             reference=reference,
         )
 
@@ -306,17 +314,20 @@ class GRB:
                     - (self.min_energy**spectral_index_plus)
                 )
             )
-        else:   
+        else:
             model = self.get_gammapy_spectrum(time)
-            
+
             if self.ebl is not None:
                 model = model * self.ebl
-            
+
             if mode == "photon_flux":
-                integral_spectrum = model.integral(energy_min=self.min_energy, energy_max=self.max_energy).to("cm-2 s-1")
+                integral_spectrum = model.integral(
+                    energy_min=self.min_energy, energy_max=self.max_energy
+                ).to("cm-2 s-1")
             else:
-                integral_spectrum = model.energy_flux(energy_min=self.min_energy, energy_max=self.max_energy).to("GeV cm-2 s-1")
-                
+                integral_spectrum = model.energy_flux(
+                    energy_min=self.min_energy, energy_max=self.max_energy
+                ).to("GeV cm-2 s-1")
 
         return integral_spectrum
 
@@ -324,7 +335,7 @@ class GRB:
         self,
         start_time: u.Quantity,
         stop_time: u.Quantity,
-        mode: Literal["sensitivity", "photon_flux"] = "sensitivity"
+        mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
@@ -390,109 +401,49 @@ class GRB:
 
         return o
 
-    def check_if_visible(
+    def visibility_function(
+        self,
+        stop_time: float,
+        start_time: u.Quantity,
+        sensitivity: Sensitivity,
+        sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    ) -> float:
+        # start time = delay
+        # stop_time (t) = delay + exposure time
+
+        stop_time = stop_time * u.s
+
+        fluence = self.get_fluence(start_time, stop_time, mode=sensitivity_mode)
+
+        average_flux = fluence / (stop_time - start_time)
+
+        sens = sensitivity.get(
+            t=(stop_time - start_time),
+            mode=sensitivity_mode,
+        ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
+
+        exposure_time = stop_time - start_time
+
+        # print(f"{'++' if average_flux > sens else '--'}, Exp time: {exposure_time}, Average flux: {average_flux}, Sensitivity: {sens}")
+        return np.log10(average_flux.value) - np.log10(sens.value)
+
+    def is_visible(
         self,
         start_time: u.Quantity,
         stop_time: u.Quantity,
         sensitivity: Sensitivity,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
-        mode: Literal["bool", "difference"] = "bool",
     ) -> bool:
-        if not start_time.unit.physical_type == "time":
-            raise ValueError(f"start_time must be a time quantity, got {start_time}")
-        if not stop_time.unit.physical_type == "time":
-            raise ValueError(f"stop_time must be a time quantity, got {stop_time}")
-
-        start_time = start_time.to("s")
-        stop_time = stop_time.to("s")
-
-        # Interpolation and integration of the flux with time 
-        # GeV / (cm2) or 1 / (cm2)
-        fluence = self.get_fluence(start_time, stop_time, mode=sensitivity_mode)
-        
-        # GeV / (cm2 s) or 1 / (cm2 s)
-        average_flux = fluence / (stop_time - start_time)
-
-        res = sensitivity.get(
-            t=(stop_time - start_time),
-            mode=sensitivity_mode,
-        ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
-
-        visible = average_flux > res
-        difference = average_flux - res
-
-        log.debug(
-            f"GAMMAPY:    visible:{visible} avgflux={average_flux}, sensitivity={sensitivity}"
-        )
-
-        if mode == "bool":
-            return visible
-        else:
-            return difference
-
-    def _bisect_find_zeros(
-        self,
-        sensitivity: Sensitivity,
-        start_time: u.Quantity,
-        stop_time: u.Quantity,
-        target_precision: u.Quantity,
-        max_iter: int = 100,
-        current_iter: int = 0,
-        lowest_possible: u.Quantity | None = None,
-        highest_possible: u.Quantity | None = None,
-    ):
-        if lowest_possible is None:
-            lowest_possible = start_time
-        if highest_possible is None:
-            highest_possible = stop_time
-
-        midpoint = (lowest_possible + highest_possible) / 2
-
-        if current_iter >= max_iter:
-            return midpoint, False
-
-        seen = self.check_if_visible(
-            start_time,
-            midpoint,
-            sensitivity,
-        )
-
-        # print in table format
-        log.debug(
-            f"{current_iter:<10} {start_time:<10.2f} {stop_time:<10.2f} {midpoint:<10.2f} {seen}"
-        )
-
-        if seen:
-            if highest_possible - midpoint < target_precision:
-                if midpoint - start_time < target_precision:
-                    res = target_precision + start_time
-                else:
-                    res = midpoint
-                # round res to target precision
-                res = round((res / target_precision).value) * target_precision
-                return res, True
-
-            return self._bisect_find_zeros(
+        # print(f'Start time: {start_time}, Stop time: {stop_time}')
+        return (
+            self.visibility_function(
+                stop_time.to_value(u.s),
+                start_time.to(u.s),
                 sensitivity,
-                start_time=start_time,
-                stop_time=stop_time,
-                target_precision=target_precision,
-                max_iter=max_iter,
-                current_iter=current_iter + 1,
-                lowest_possible=lowest_possible,
-                highest_possible=midpoint,
+                sensitivity_mode,
             )
-        else:
-            return self._bisect_find_zeros(
-                sensitivity,
-                start_time=start_time,
-                stop_time=stop_time,
-                target_precision=target_precision,
-                max_iter=max_iter,
-                current_iter=current_iter + 1,
-                lowest_possible=midpoint,
-                highest_possible=highest_possible,
-            )
+            > 0
+        )
 
     def observe(
         self,
@@ -500,13 +451,14 @@ class GRB:
         start_time: u.Quantity = 0 * u.s,
         min_energy: u.Quantity = None,
         max_energy: u.Quantity = None,
-        max_time: u.Quantity = 12 * u.hour,
+        max_time: u.Quantity = 4 * u.hour,
         target_precision: u.Quantity = 1 * u.s,
-        n_time_steps: int = 100,
-        max_iter=100,
+        n_time_steps: int = 10,
+        xtol: float = 1e-5,
+        rtol: float = 1e-5,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+        **kwargs,
     ):
-
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
 
@@ -537,82 +489,43 @@ class GRB:
         start_time = start_time.to("s")
         max_time = max_time.to("s")
 
-        self._num_iters = 0
-        self._last_guess = max_time + start_time
+        # check if immediately visible
+        if self.is_visible(
+            start_time, target_precision + start_time, sensitivity, sensitivity_mode
+        ):
+            self.end_time = target_precision + start_time
+            self.obs_time = target_precision
+            self.seen = True
+            return self.output()
 
         try:
-            # start the procedure
-            self.start_time = start_time
-            delay = start_time
-            
-            ''' four cases:
-            1. average fluence is always above the sensitivity curve -> immediately detectable
-            2. average fluence is monotonically increasing -> intersection point is moment of detectability
-            3. average fluence is always below the sensitivity curve -> never detectable
-            4. average fluence crosses sensitivity curve multiple times -> first point where it is above sensitivity is the moment of detectability
-            '''
-            
-            # Check immediate detectability
-            visible = self.check_if_visible(delay, target_precision + delay, sensitivity, sensitivity_mode=sensitivity_mode)
-            
-            if visible:
-                self.end_time = target_precision + delay
-                self.obs_time = target_precision
-                self.seen = True
-                # print("Immediate detectability")
-                return self.output()
-            
-            # Perform an incremental search
-            time_steps = np.logspace(
-                np.log10(target_precision.value),
-                np.log10(max_time.value),
-                n_time_steps,
-            ) * u.s
-            
-            detected_in_scan = False
-            
-            for i, time_step in enumerate(time_steps):
-                
-                previous_time = start_time + time_step
-                
-                if i == (n_time_steps - 1):
-                    break
-                else:
-                    current_time = start_time + time_steps[i + 1]
-            
-                visible = self.check_if_visible(start_time, previous_time, sensitivity, sensitivity_mode=sensitivity_mode)
-                # print(f"Start time: {start_time}, Current time: {current_time}, Previous time: {previous_time}, {visible}")
-                
-                if visible:
-                    # print(f"Detected between {previous_time} and {current_time}")
-                    detected_in_scan = True
-                    break
-                
-            if not detected_in_scan:
-                self.end_time = -1 * u.s
-                self.obs_time = -1 * u.s
-                self.seen = False
-                # print("Never detectable")
-                return self.output()
-            
-            # Fine-tune search with bisection
-            # print(f"Fine-tuning search with bisection between {start_time} and {current_time}")
-            end_time, seen = self._bisect_find_zeros(
-                sensitivity, start_time, current_time, target_precision, max_iter=max_iter, lowest_possible=previous_time, highest_possible=current_time
+            res = find_roots(
+                self.visibility_function,
+                lower_bound=start_time.to_value(u.s) + target_precision.to_value(u.s),
+                upper_bound=start_time.to_value(u.s) + max_time.to_value(u.s),
+                points_scale="log",
+                args=(start_time, sensitivity, sensitivity_mode),
+                nbin=n_time_steps,
+                xtol=xtol,
+                rtol=rtol,
+                method="brentq",
+                **kwargs,
             )
 
-            if seen:
-                self.end_time = end_time
-                self.obs_time = end_time - start_time
-                self.seen = True
-                # print(f"Detected at {end_time}")
-            else:
+            first_root = np.nanmin(res[0])
+
+            if math.isnan(first_root):
                 self.end_time = -1 * u.s
                 self.obs_time = -1 * u.s
                 self.seen = False
-                # print("Never detectable, but weirdly")
+                return self.output()
 
-            # just return dict now
+            end_time = round((first_root / target_precision).value) * target_precision
+
+            self.end_time = end_time
+            self.obs_time = end_time - start_time
+            self.seen = True
+
             return self.output()
 
         except Exception as e:
@@ -622,7 +535,7 @@ class GRB:
             self.error_message = str(e)
 
             return self.output()
-        
+
     def get_significance(
         self,
         start_time: u.Quantity,
@@ -630,7 +543,6 @@ class GRB:
         sensitivity: Sensitivity,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
-        
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -638,20 +550,20 @@ class GRB:
 
         start_time = start_time.to("s")
         stop_time = stop_time.to("s")
-        
+
         fluence = self.get_fluence(start_time, stop_time, mode=sensitivity_mode)
         average_flux = fluence / (stop_time - start_time)
         sens = sensitivity.get(
             t=(stop_time - start_time),
             mode=sensitivity_mode,
         ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
-        
+
         # sens represents the 5sigma sensitivity curve
         # and significance scales with sqrt(t) for a given flux
         sig = 5 * (average_flux / sens)
-        
+
         return sig
-        
+
     def get_significance_evolution(
         self,
         sensitivity: Sensitivity,
@@ -662,7 +574,6 @@ class GRB:
         n_time_steps: int = 50,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
-        
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
 
@@ -687,14 +598,24 @@ class GRB:
 
         start_time = start_time.to("s")
         max_time = max_time.to("s")
-        
+
         end_times = np.logspace(
             np.log10(start_time.value),
             np.log10(max_time.value),
             n_time_steps,
         )
-        
-        # calculate significance 
-        sig = np.array([self.get_significance(start_time, end_time * u.s, sensitivity, sensitivity_mode=sensitivity_mode) for end_time in end_times])
-        
+
+        # calculate significance
+        sig = np.array(
+            [
+                self.get_significance(
+                    start_time,
+                    end_time * u.s,
+                    sensitivity,
+                    sensitivity_mode=sensitivity_mode,
+                )
+                for end_time in end_times
+            ]
+        )
+
         return end_times, sig

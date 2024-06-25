@@ -6,10 +6,10 @@ from astropy import units as u
 from numpy import log10
 from scipy.interpolate import interp1d
 from typing import Literal
-
+import warnings
 from . import observe, sensitivity
 
-
+        
 def get_row(
     sens_df: pd.DataFrame,
     event_id: int,
@@ -33,9 +33,10 @@ def get_row(
     if len(rows) < 1:
         raise ValueError("No sensitivity found with these values.")
     if len(rows) > 1:
-        print(
-            f"Warning: multiple ({len(rows)}) sensitivities found with these values. Will use first row."
-        )
+        # print(
+        #     f"Warning: multiple ({len(rows)}) sensitivities found with these values. Will use first row."
+        # )
+        pass
 
     return rows.iloc[0]
 
@@ -88,7 +89,7 @@ def get_sensitivity(
     site: str,
     zenith: int,
     sens_df: pd.DataFrame | None = None,
-    sens_curve: list | None = None,
+    sensitivity_curve: list | None = None,
     photon_flux_curve: list | None = None,
     ebl: bool = False,
     config: str = "alpha",
@@ -98,8 +99,8 @@ def get_sensitivity(
     max_energy: u.Quantity = 10 * u.TeV,
 ):
     
-    if sens_df is None and sens_curve is None:
-        raise ValueError("Must provide either sens_df or sens_curve")
+    if sens_df is None and sensitivity_curve is None:
+        raise ValueError("Must provide either sens_df or sensitivity_curve")
     if sens_df is not None:
 
         row = get_row(
@@ -112,18 +113,15 @@ def get_sensitivity(
             duration=duration,
         )
 
-        curve = row["sensitivity_curve"]
+        sensitivity_curve = row["sensitivity_curve"]
         photon_flux_curve = row["photon_flux_curve"]
-        
-    else:
-        curve = sens_curve
 
     sens = sensitivity.Sensitivity(
         observatory=f"cta_{site}",
         radius=radius,
         min_energy=min_energy,
         max_energy=max_energy,
-        sensitivity_curve=curve * u.Unit("erg cm-2 s-1"),
+        sensitivity_curve=sensitivity_curve * u.Unit("erg cm-2 s-1"),
         photon_flux_curve=photon_flux_curve * u.Unit("cm-2 s-1"),
     )
 
@@ -137,7 +135,8 @@ def get_exposure(
     site: str,
     zenith: int,
     sens_df: pd.DataFrame | None = None,
-    sens_curve: list | None = None,
+    sensitivity_curve: list | None = None,
+    photon_flux_curve: list | None = None,
     extrapolation_df: pd.DataFrame | None = None,
     ebl: str | None = None,
     config: str = "alpha",
@@ -147,7 +146,8 @@ def get_exposure(
     max_energy: u.Quantity = 10 * u.TeV,
     target_precision: u.Quantity = 1 * u.s,
     max_time: u.Quantity = 12 * u.h,
-    sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity"
+    sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    n_time_steps: int = 10,
 ):
     # check delay units
     if delay.unit.physical_type != "time":
@@ -208,7 +208,8 @@ def get_exposure(
         site=site,
         zenith=zenith,
         sens_df=sens_df,
-        sens_curve=sens_curve,
+        sensitivity_curve=sensitivity_curve,
+        photon_flux_curve=photon_flux_curve,
         ebl=bool(ebl),
         config=config,
         duration=duration,
@@ -219,14 +220,17 @@ def get_exposure(
 
     grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
 
-    result = grb.observe(
-        sens,
-        start_time=delay,
-        min_energy=min_energy,
-        max_energy=max_energy,
-        target_precision=target_precision,
-        max_time=max_time,
-        sensitivity_mode=sensitivity_mode
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', r'All-NaN slice encountered')
+        result = grb.observe(
+            sens,
+            start_time=delay,
+            min_energy=min_energy,
+            max_energy=max_energy,
+            target_precision=target_precision,
+            max_time=max_time,
+            sensitivity_mode=sensitivity_mode,
+            n_time_steps=n_time_steps,
+        )
 
     return result
