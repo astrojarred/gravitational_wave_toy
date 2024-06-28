@@ -129,15 +129,15 @@ def get_sensitivity(
 
 
 def get_exposure(
-    grb_filepath: Path | str,
     event_id: int,
     delay: u.Quantity,
     site: str,
     zenith: int,
+    grb_filepath: Path | str | None = None,
     sens_df: pd.DataFrame | None = None,
     sensitivity_curve: list | None = None,
     photon_flux_curve: list | None = None,
-    extrapolation_df: pd.DataFrame | None = None,
+    extrapolation_df: pd.DataFrame | Path | str | None = None,
     ebl: str | None = None,
     config: str = "alpha",
     duration: int = 1800,
@@ -174,6 +174,9 @@ def get_exposure(
     
     if extrapolation_df is not None:
         
+        if isinstance(extrapolation_df, (Path, str)):
+            extrapolation_df = pd.read_parquet(extrapolation_df)
+        
         obs_info = extrapolate_obs_time(
             event_id=event_id,
             delay=delay,
@@ -191,7 +194,6 @@ def get_exposure(
         obs_info["ebl_model"] = obs_info.pop("irf_ebl_model")
         
         other_info = {
-            "filepath": grb_filepath.absolute(),
             "min_energy": min_energy,
             "max_energy": max_energy,
             "seen": True if obs_time > 0 else False,
@@ -202,6 +204,10 @@ def get_exposure(
         }
         
         return {**obs_info, **other_info}
+    
+    else:
+        if not grb_filepath:
+            raise ValueError("Must provide grb_filepath if extrapolation_df is not provided")
 
     sens = get_sensitivity(
         event_id=event_id,
