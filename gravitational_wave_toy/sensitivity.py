@@ -17,7 +17,7 @@ from gammapy.data import (
     observatory_locations,
 )
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
-from gammapy.estimators import SensitivityEstimator, FluxPoints
+from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
 from gammapy.makers import (
     ReflectedRegionsBackgroundMaker,
@@ -338,7 +338,7 @@ class Sensitivity:
     
     @staticmethod
     def simulate_spectrum(
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -373,7 +373,10 @@ class Sensitivity:
         model = SkyModel(spectral_model=spectral_model, name="source")
 
         # extract 1D IRFs
-        irfs = load_irf_dict_from_file(irf)
+        if not isinstance(irf, dict):
+            irfs = load_irf_dict_from_file(irf)
+        else:
+            irfs = irf
 
         # create observation
         location = observatory_locations[observatory]
@@ -449,7 +452,7 @@ class Sensitivity:
 
     @staticmethod
     def estimate_integral_sensitivity(  
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -566,7 +569,7 @@ class Sensitivity:
 
     @staticmethod
     def estimate_differential_sensitivity(
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -627,11 +630,14 @@ class Sensitivity:
             Integral sensitivity in units of cm^-2 s^-1
         """
         
-        # check that IRF file exists
-        irf = Path(irf)
+        if not isinstance(irf, dict):
+            # check that IRF file exists
+            irf = Path(irf)
 
-        # Load IRFs
-        irfs = load_irf_dict_from_file(irf)
+            # Load IRFs
+            irfs = load_irf_dict_from_file(irf)
+        else:
+            irfs = irf
 
         # check units
         duration = duration.to("s")
