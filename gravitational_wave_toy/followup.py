@@ -206,8 +206,8 @@ def get_exposure(
         obs_info["ebl_model"] = obs_info.pop("irf_ebl_model")
         
         # add other units
-        obs_info["long"] = obs_info["long"] * u.deg
-        obs_info["lat"] = obs_info["lat"] * u.deg
+        obs_info["long"] = obs_info["long"] * u.rad
+        obs_info["lat"] = obs_info["lat"] * u.rad
         obs_info["eiso"] = obs_info["eiso"] * u.erg
         obs_info["dist"] = obs_info["dist"] * u.kpc
         
