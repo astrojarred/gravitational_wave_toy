@@ -66,14 +66,22 @@ def extrapolate_obs_time(
     if delay < min(event_dict.keys()):
         res["error_message"] = f"Minimum delay is {min(event_dict.keys())} seconds for this simulation"
         res["obs_time"] = -1
+        raise ValueError(f"Minimum delay is {min(event_dict.keys())} seconds for this simulation [{delay}s requested]")
+    elif delay > max(event_dict.keys()):
+        print(f"Warning: delay is greater than maximum delay of {max(event_dict.keys())}s for this simulation [{delay}s requested], value will be extrapolated.")
 
     # remove negative values
     pos_event_dict = {k: v for k, v in event_dict.items() if v > 0}
+    
+    if not pos_event_dict:
+        res["error_message"] = f"Event is never detectable under the observation conditions {filters}"
+        res["obs_time"] = -1
+        return res
         
     # perform log interpolation
     log_event_dict = {log10(k): log10(v) for k, v in pos_event_dict.items()}
 
-    interp = interp1d(list(log_event_dict.keys()), list(log_event_dict.values()), kind="linear")
+    interp = interp1d(list(log_event_dict.keys()), list(log_event_dict.values()), kind="linear", fill_value="extrapolate")
     
     try:
         res["obs_time"] = 10**interp(log10(delay))
@@ -187,11 +195,21 @@ def get_exposure(
         
         obs_time = obs_info["obs_time"]
         if obs_time > 0:
-            obs_time = round(obs_time / target_precision.value) * target_precision
+            if obs_time > max_time.value:
+                obs_info["error_message"] = f"Exposure time of {int(obs_time)} s exceeds maximum time"
+                obs_time = -1
+            else:
+                obs_time = round(obs_time / target_precision.value) * target_precision
         
         # rename key
-        obs_info["angle"] = obs_info.pop("theta_view")
+        obs_info["angle"] = obs_info.pop("theta_view") * u.deg
         obs_info["ebl_model"] = obs_info.pop("irf_ebl_model")
+        
+        # add other units
+        obs_info["long"] = obs_info["long"] * u.deg
+        obs_info["lat"] = obs_info["lat"] * u.deg
+        obs_info["eiso"] = obs_info["eiso"] * u.erg
+        obs_info["dist"] = obs_info["dist"] * u.kpc
         
         other_info = {
             "min_energy": min_energy,
