@@ -27,6 +27,8 @@
 - [Authors](#️authors)
 - [Instructions](#instructions)
   - [GW Observations](#instructions-gw-obs)
+    - [Example Simulation](#example-simulation)
+    - [Example followup calculation](#example-followup)
   - [Reading Results](#instructions-reading)
   - [Plotting Heatmaps](#instructions-plotting)
 
@@ -91,7 +93,7 @@ This code simulates observations of simulated gravitational wave events to deter
 
 - a dictionary object containing detection information and parameters of the event itself (extracted from the model)
 
-#### Example
+#### Example Simulation<a name ="example-simulation"></a>
 
 ```python
 from astropy import units as u
@@ -144,6 +146,54 @@ res = grb.observe(
 
 print(f"Observation time at delay={delay_time} is {res_ebl['obs_time']} with EBL={res_ebl['ebl_model']}")
 # Obs time at delay=1800.0 s is 1292.0 s with EBL=franceschini
+```
+
+### Example followup calculation<a name ="example-followup"></a>
+
+```python
+import astropy.units as u
+import pandas as pd
+from gravitational_wave_toy import followup
+
+lookup_talbe = "./O5_gammapy_observations_v4.parquet"
+
+# optional, but it's recommended to load the DataFrame first save time
+# otherwise you can directly pass the filepath to the get_exposure method
+lookup_df = pd.read_parquet(lookup_talbe)
+
+event_id = 1
+delay = 10 * u.s
+site = "north"
+zenith = 60
+ebl = "franceschini"
+
+
+followup.get_exposure(
+    event_id=event_id,
+    delay=delay,
+    site=site,
+    zenith=zenith,
+    extrapolation_df=lookup_df,
+    ebl=ebl,
+)
+
+# returns, e.g.
+# {
+#     'long': <Quantity 2.623 rad>,
+#     'lat': <Quantity 0.186 rad>,
+#     'eiso': <Quantity 2.67e+50 erg>,
+#     'dist': <Quantity 466000. kpc>,
+#     'obs_time': <Quantity 169. s>,
+#     'error_message': '',
+#     'angle': <Quantity 24.521 deg>,
+#     'ebl_model': 'franceschini',
+#     'min_energy': <Quantity 0.02 TeV>,
+#     'max_energy': <Quantity 10. TeV>,
+#     'seen': True,
+#     'start_time': <Quantity 10. s>,
+#     'end_time': <Quantity 179. s>,
+#     'id': 4
+# }
 ```
 
 ### Reading Results<a name = "instructions-reading"></a>
