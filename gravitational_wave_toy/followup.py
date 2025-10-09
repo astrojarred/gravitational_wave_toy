@@ -78,10 +78,11 @@ def extrapolate_obs_time(
         res["obs_time"] = -1
         return res
         
+    pairs = sorted((log10(k), log10(v)) for k, v in pos_event_dict.items())
+    xs, ys = zip(*pairs)  # safe since not empty
+    
     # perform log interpolation
-    log_event_dict = {log10(k): log10(v) for k, v in pos_event_dict.items()}
-
-    interp = interp1d(list(log_event_dict.keys()), list(log_event_dict.values()), kind="linear", bounds_error=True)
+    interp = interp1d(xs, ys, kind="linear", bounds_error=True)
     
     try:
         res["obs_time"] = 10**interp(log10(delay))
