@@ -1,5 +1,6 @@
 import math
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -48,25 +49,17 @@ class GRB:
         except ValueError:
             self.id = 0
 
-        with fits.open(filepath) as hdu_list:
-            self.long = hdu_list[0].header["LONG"] * u.Unit("rad")
-            self.lat = hdu_list[0].header["LAT"] * u.Unit("rad")
-            self.eiso = hdu_list[0].header["EISO"] * u.Unit("erg")
-            self.dist = Distance(hdu_list[0].header["DISTANCE"], unit="kpc")
-            self.angle = hdu_list[0].header["ANGLE"] * u.Unit("deg")
-
-            datalc = hdu_list[3].data
-            datatime = hdu_list[2].data
-            dataenergy = hdu_list[1].data
-
-            self.time = datatime.field(0) * u.Unit("s")
-            self.energy = dataenergy.field(0) * u.Unit("GeV")
-
-            self.spectra = np.array(
-                [datalc.field(i) for i, e in enumerate(self.energy)]
-            ) * u.Unit("1 / (cm2 s GeV)")
+        # choose reader based on file extension
+        name_lower = self.filepath.name.lower()
+        if name_lower.endswith((".fits", ".fit", ".fits.gz", ".fit.gz")):
+            self.read_fits()
+        elif name_lower.endswith(".txt"):
+            self.read_txt()
+        else:
+            raise ValueError(f"Unsupported file format for {self.filepath}")
 
         # set spectral grid
+        self.SpectralGrid = None
         self.set_spectral_grid()
 
         # fit spectral indices
@@ -100,29 +93,170 @@ class GRB:
     def __repr__(self):
         return f"<GRB(id={self.id})>"
 
+    def read_fits(self) -> None:
+        with fits.open(self.filepath) as hdu_list:
+            self.long = hdu_list[0].header["LONG"] * u.Unit("rad")
+            self.lat = hdu_list[0].header["LAT"] * u.Unit("rad")
+            self.eiso = hdu_list[0].header["EISO"] * u.Unit("erg")
+            self.dist = Distance(hdu_list[0].header["DISTANCE"], unit="kpc")
+            self.angle = hdu_list[0].header["ANGLE"] * u.Unit("deg")
+
+            datalc = hdu_list[3].data
+            datatime = hdu_list[2].data
+            dataenergy = hdu_list[1].data
+
+            self.time = datatime.field(0) * u.Unit("s")
+            self.energy = dataenergy.field(0) * u.Unit("GeV")
+
+            self.spectra = np.array(
+                [datalc.field(i) for i, e in enumerate(self.energy)]
+            ) * u.Unit("1 / (cm2 s GeV)")
+
+    def read_txt(self) -> None:
+        # expect a lightcurve file like GRB001_lc.txt
+        lc_path = self.filepath
+
+        # read lightcurve columns
+        # header: t_obs[s], flux_int[ph/cm2/s], photon_index, z, Eiso, Fluence, flux_ebl[ph/cm2/s]
+        lc_data = np.loadtxt(lc_path)
+
+        times_s = lc_data[:, 0] * u.s
+        photon_index = lc_data[:, 2]
+        z = float(lc_data[0, 3])
+        eiso = float(lc_data[0, 4]) * u.erg
+        fluence_val = float(lc_data[0, 5]) * u.Unit("1 / cm2")
+
+        # store metadata
+        self.time = times_s
+        self.photon_index = photon_index
+        self.eiso = eiso
+        self.fluence = fluence_val
+        self.dist = Distance(z=z)
+        # angles are not provided in txt, default to 0
+        self.angle = 0 * u.deg
+        self.long = 0 * u.rad
+        self.lat = 0 * u.rad
+
+        # find associated spectral files in same directory
+        dir_path = lc_path.parent
+        stem = lc_path.name
+        base = stem.split("_lc.txt")[0]
+
+        candidates = list(dir_path.glob(f"{base}_tobs=*.txt"))
+        if len(candidates) == 0:
+            raise FileNotFoundError(
+                f"No spectral files matching {base}_tobs=*.txt found in {dir_path}"
+            )
+
+        def extract_index(p: Path) -> int:
+            m = re.search(r"_tobs=(\d+)\.txt$", p.name)
+            return int(m.group(1)) if m else -1
+
+        candidates.sort(key=extract_index)
+
+        energy_grid_GeV = None
+        spectra_columns = []  # list of flux arrays per time
+        selected_times = []
+
+        for p in candidates:
+            arr = np.loadtxt(p)
+            energy_eV = arr[:, 0] * u.eV
+
+            # detect header to determine flux units
+            header = ""
+            try:
+                with p.open("r") as fh:
+                    for line in fh:
+                        if line.strip().startswith("#"):
+                            header = line.strip()
+                            break
+            except Exception:
+                header = ""
+
+            if "erg/cm2/s/eV" in header:
+                energy_GeV = energy_eV.to("GeV")
+                flux_energy_density = arr[:, 1] * (u.erg / (u.cm**2 * u.s * u.eV))
+                photon_energy = energy_eV.to(u.erg)
+                flux_per_eV = (flux_energy_density / photon_energy).to(
+                    "1 / (cm2 s eV)"
+                )
+                flux_per_GeV = flux_per_eV.to("1 / (cm2 s GeV)")
+            else:
+                # assume photon flux already provided per eV
+                energy_GeV = energy_eV.to("GeV")
+                flux_per_eV = arr[:, 1] * u.Unit("1 / (cm2 s eV)")
+                flux_per_GeV = flux_per_eV.to("1 / (cm2 s GeV)")
+
+            if energy_grid_GeV is None:
+                energy_grid_GeV = energy_GeV
+            else:
+                # if grids differ, interpolate onto the first grid
+                if not np.allclose(energy_GeV.value, energy_grid_GeV.value, rtol=0, atol=0):
+                    interp = interp1d(
+                        energy_GeV.value,
+                        flux_per_GeV.value,
+                        bounds_error=False,
+                        fill_value="extrapolate",
+                    )
+                    flux_per_GeV = interp(energy_grid_GeV.value) * u.Unit(
+                        "1 / (cm2 s GeV)"
+                    )
+
+            spectra_columns.append(flux_per_GeV)
+
+            idx = extract_index(p)
+            if 0 <= idx < len(self.time):
+                selected_times.append(self.time[idx])
+
+        # set energy grid
+        self.energy = energy_grid_GeV
+
+        # align times with loaded spectra; if none matched by index, fall back to first N
+        if len(selected_times) == len(spectra_columns):
+            self.time = u.Quantity(selected_times)
+        else:
+            self.time = self.time[: len(spectra_columns)]
+
+        # build spectra with shape (n_energy, n_time)
+        spectra_stack = u.Quantity(spectra_columns)  # (n_time, n_energy)
+        self.spectra = spectra_stack.T  # (n_energy, n_time)
+        
+        if not isinstance(self.min_energy, u.Quantity):
+            self.min_energy = self.energy.min()
+        if not isinstance(self.max_energy, u.Quantity):
+            self.max_energy = self.energy.max()
+
     def set_spectral_grid(self):
+        if self.SpectralGrid is not None:
+            return
+        
         self.SpectralGrid = RegularGridInterpolator(
             (np.log10(self.energy.value), np.log10(self.time.value)), self.spectra
         )
 
-    def show_spectral_pattern(self, resolution=100, return_plot=False):
+    def show_spectral_pattern(self, resolution=100, return_plot=False, cutoff_flux=1e-15 * u.Unit("1 / (cm2 s GeV)")):
         self.set_spectral_grid()
 
-        loge = np.around(np.log10(self.energy.value), 1)
-        logt = np.around(np.log10(self.time.value), 1)
+        loge = np.log10(self.energy.value)
+        logt = np.log10(self.time.value)
 
-        x = np.around(np.linspace(min(loge), max(loge), resolution + 1), 1)[::-1]
-        y = np.around(np.linspace(min(logt), max(logt), resolution + 1), 1)
+        x = np.linspace(loge.min(), loge.max(), resolution + 1)[::-1]
+        y = np.linspace(logt.min(), logt.max(), resolution + 1)
 
         points = []
         for e in x:
             for t in y:
                 points.append([e, t])
+                
+        spectrum = self.SpectralGrid(points)
+        # set everything below the cutoff energy to cutoff_energy
+        cutoff_flux = cutoff_flux.to("1 / (cm2 s GeV)")
+        spectrum[spectrum < cutoff_flux.value] = cutoff_flux.value
 
-        plt.xlabel("Log(t)")
-        plt.ylabel("Log(E)")
+        plt.xlabel("Log(t [s])")
+        plt.ylabel("Log(E [GeV])")
         plt.imshow(
-            np.log10(self.SpectralGrid(points)).reshape(resolution + 1, resolution + 1),
+            np.log10(spectrum).reshape(resolution + 1, resolution + 1),
             extent=(logt.min(), logt.max(), loge.min(), loge.max()),
             cmap="viridis",
             aspect="auto",
@@ -422,7 +556,7 @@ class GRB:
             mode=sensitivity_mode,
         ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
 
-        exposure_time = stop_time - start_time
+        # exposure_time = stop_time - start_time
 
         # print(f"{'++' if average_flux > sens else '--'}, Exp time: {exposure_time}, Average flux: {average_flux}, Sensitivity: {sens}")
         return np.log10(average_flux.value) - np.log10(sens.value)
