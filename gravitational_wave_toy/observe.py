@@ -2,7 +2,6 @@ import math
 import os
 import re
 from pathlib import Path
-import time
 from typing import Literal
 
 import astropy.units as u
