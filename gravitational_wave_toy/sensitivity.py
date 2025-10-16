@@ -17,7 +17,7 @@ from gammapy.data import (
     observatory_locations,
 )
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
-from gammapy.estimators import SensitivityEstimator, FluxPoints
+from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
 from gammapy.makers import (
     ReflectedRegionsBackgroundMaker,
@@ -31,6 +31,7 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
     SpectralModel,
     SkyModel,
+    TemplateSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from gammapy.utils.roots import find_roots
@@ -45,6 +46,105 @@ log = logger(__name__)
 # import types
 if TYPE_CHECKING:
     from .observe import GRB
+
+
+class ScaledTemplateModel(TemplateSpectralModel):
+    """Scaled template spectral model for sensitivity calculations."""
+    
+    def __init__(self, scaling_factor: int | float = 1, *args, **kwargs):
+        self.scaling_factor = scaling_factor
+        self._original_values = None  # Initialize before calling super
+        super().__init__(*args, **kwargs)
+        # When super().__init__ sets self.values, our setter stores it in _original_values
+
+    @classmethod
+    def from_template(cls, model: TemplateSpectralModel, scaling_factor: int | float = 1):
+        """
+        Factory method to create a ScaledTemplateModel from an existing TemplateSpectralModel.
+        """
+        return cls(energy=model.energy, values=model.values, scaling_factor=scaling_factor)
+    
+    @property
+    def values(self):
+        return self._original_values * self.scaling_factor
+    
+    @values.setter
+    def values(self, values: u.Quantity):
+        self._original_values = values
+    
+    def evaluate(self, energy):
+        """Evaluate the model with scaling applied."""
+        # Get the unscaled evaluation from parent class
+        unscaled_result = super().evaluate(energy)
+        # Apply scaling factor
+        return unscaled_result * self.scaling_factor
+
+
+def _get_model_normalization_info(spectral_model):
+    """
+    Extract normalization information from different spectral model types.
+    
+    Parameters
+    ----------
+    spectral_model : SpectralModel
+        The spectral model to extract normalization from.
+        
+    Returns
+    -------
+    tuple
+        (normalization_value, normalization_unit, model_copy_function)
+    """
+    if isinstance(spectral_model, CompoundSpectralModel):
+        # For compound models, check if the first component has amplitude
+        if hasattr(spectral_model.model1, 'amplitude'):
+            norm_value = spectral_model.model1.amplitude.value
+            norm_unit = spectral_model.model1.amplitude.unit
+            
+            def copy_func(model, new_norm):
+                model_copy = model.copy()
+                model_copy.model1.amplitude.value = new_norm
+                return model_copy
+                
+            return norm_value, norm_unit, copy_func
+        else:
+            # Fallback: use scaling factor if it's a ScaledTemplateModel
+            if hasattr(spectral_model.model1, 'scaling_factor'):
+                norm_value = spectral_model.model1.scaling_factor
+                norm_unit = u.dimensionless_unscaled
+                
+                def copy_func(model, new_norm):
+                    model_copy = model.copy()
+                    model_copy.model1.scaling_factor = new_norm
+                    return model_copy
+                    
+                return norm_value, norm_unit, copy_func
+    
+    elif hasattr(spectral_model, 'amplitude'):
+        # Standard models with amplitude parameter
+        norm_value = spectral_model.amplitude.value
+        norm_unit = spectral_model.amplitude.unit
+        
+        def copy_func(model, new_norm):
+            model_copy = model.copy()
+            model_copy.amplitude.value = new_norm
+            return model_copy
+            
+        return norm_value, norm_unit, copy_func
+    
+    elif hasattr(spectral_model, 'scaling_factor'):
+        # ScaledTemplateModel
+        norm_value = spectral_model.scaling_factor
+        norm_unit = u.dimensionless_unscaled
+        
+        def copy_func(model, new_norm):
+            model_copy = model.copy()
+            model_copy.scaling_factor = new_norm
+            return model_copy
+            
+        return norm_value, norm_unit, copy_func
+    
+    else:
+        raise ValueError(f"Unsupported spectral model type: {type(spectral_model)}")
 
 
 class Sensitivity:
@@ -209,6 +309,7 @@ class Sensitivity:
         n_bins: int | None = None,
         starting_amplitude: u.Quantity = 1e-12 * u.Unit("TeV-1 cm-2 s-1"),
         reference: u.Quantity = 1 * u.TeV,
+        use_model: bool = True,
         **kwargs,
     ):
         if not n_sensitivity_points:
@@ -231,17 +332,30 @@ class Sensitivity:
             n_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
 
         for t in times:
-            s = self.get_sensitivity_from_model(
-                t=t,
-                index=grb.get_spectral_index(t),
-                amplitude=starting_amplitude,
-                reference=reference,
-                redshift=grb.dist.z,
-                sensitivity_type="integral",
-                offset=offset,
-                n_bins=n_bins,
-                **kwargs,
-            )
+            if use_model:
+                s = self.get_sensitivity_from_model(
+                    t=t,
+                    spectral_model=PowerLawSpectralModel(
+                        index=-grb.get_spectral_index(t),
+                        amplitude=starting_amplitude,
+                        reference=reference,
+                    ),
+                    redshift=grb.dist.z if grb.dist != 0 else 0,
+                    sensitivity_type="integral",
+                    offset=offset,
+                    n_bins=n_bins,
+                    **kwargs,
+                )
+            else:
+                s = self.get_sensitivity_from_model(
+                    t=t,
+                    spectral_model=grb.get_template_spectrum(t),
+                    redshift=grb.dist.z if grb.dist != 0 else 0,
+                    sensitivity_type="integral",
+                    offset=offset,
+                    n_bins=n_bins,
+                    **kwargs,
+                )
 
             self._sensitivity_information.append(s)
             sensitivity_curve.append(s["energy_flux"])
@@ -272,9 +386,7 @@ class Sensitivity:
     def get_sensitivity_from_model(
         self,
         t: u.Quantity,  # [s]
-        index: float,
-        amplitude: u.Quantity,  # [GeV-1 cm-2 s-1]
-        reference: u.Quantity | None = None,  # [GeV]
+        spectral_model: SpectralModel,
         redshift: float = 0.0,
         sensitivity_type: Literal["integral", "differential"] = "integral",
         n_bins: int | None = None,
@@ -287,26 +399,15 @@ class Sensitivity:
             raise ValueError(f"t must be a time quantity, got {t}")
         t = t.to("s")
 
-        try:
-            amplitude = amplitude.to("TeV-1 cm-2 s-1")
-        except u.UnitConversionError:
-            raise ValueError(f"amplitude must be a flux quantity, got {amplitude}")
-        if reference is None:
-            reference = 1 * u.TeV
-
-        t_model = PowerLawSpectralModel(
-            index=-index,
-            amplitude=amplitude,
-            reference=reference,
-        )
-
-        if self.ebl is not None:
+        # Apply EBL absorption if specified
+        if self.ebl is not None and redshift > 0:
             ebl_model = EBLAbsorptionNormSpectralModel.read_builtin(
                 self.ebl,
                 redshift=redshift,
             )
-
-            t_model = t_model * ebl_model
+            t_model = spectral_model * ebl_model
+        else:
+            t_model = spectral_model
 
         if sensitivity_type == "integral":
             sens_result = self.estimate_integral_sensitivity(
@@ -418,11 +519,13 @@ class Sensitivity:
     def get_ts_difference(norm: float, dataset: SpectrumDatasetOnOff, significance: float = 5):
         
 
-        # dataset.models[0].spectral_model.amplitude.value = norm
-        if isinstance(dataset.models[0]._spectral_model, PowerLawSpectralModel):
-            dataset.models[0]._spectral_model.amplitude.value = norm
-        else:
-            dataset.models[0]._spectral_model.model1.amplitude.value = norm
+        # Update the spectral model normalization using our helper function
+        spectral_model = dataset.models[0]._spectral_model
+        _, _, copy_func = _get_model_normalization_info(spectral_model)
+        
+        # Create a new model with updated normalization and replace it
+        updated_model = copy_func(spectral_model, norm)
+        dataset.models[0]._spectral_model = updated_model
                 
         
         # TODO: Check that the inputs here are correct
@@ -506,10 +609,8 @@ class Sensitivity:
             
             # print(dataset.counts_off.data.sum(), dataset.npred_signal().data.sum())
             
-            if isinstance(spectral_model, CompoundSpectralModel):
-                original_norm= spectral_model.model1.amplitude.value
-            else:
-                original_norm = spectral_model.amplitude.value
+            # Get normalization information using our helper function
+            original_norm, norm_unit, copy_func = _get_model_normalization_info(spectral_model)
                 
             lower_bound = original_norm * lower_bound_ratio
             upper_bound = original_norm * upper_bound_ratio
@@ -526,29 +627,20 @@ class Sensitivity:
             
             roots = np.append(roots, root)
             
-        if isinstance(spectral_model, CompoundSpectralModel):
-            spectral_model_unit = spectral_model.model1.amplitude.unit
-        else:
-            spectral_model_unit = spectral_model.amplitude.unit
+        # Use the helper function to get normalization info
+        _, norm_unit, copy_func = _get_model_normalization_info(spectral_model)
         
-        final_normalization = np.mean(roots) * spectral_model_unit
-        final_normalization_err = np.std(roots) * spectral_model_unit
+        final_normalization = np.mean(roots) * norm_unit
+        final_normalization_err = np.std(roots) * norm_unit
         
-        final_spectrum = spectral_model.copy() 
-        if isinstance(spectral_model, CompoundSpectralModel):
-            final_spectrum.model1.amplitude.value = final_normalization.value
-        else:
-            final_spectrum.amplitude.value = final_normalization.value
+        # Create final spectrum with updated normalization
+        final_spectrum = copy_func(spectral_model, final_normalization.value)
         
         photon_flux = final_spectrum.integral(min_energy, max_energy)
         energy_flux = final_spectrum.energy_flux(min_energy, max_energy)
         
         # calculate errors
-        final_spectrum_error = spectral_model.copy()
-        if isinstance(final_spectrum_error, CompoundSpectralModel):
-            final_spectrum_error.model1.amplitude.value = final_normalization.value + final_normalization_err.value
-        else:
-            final_spectrum_error.amplitude.value = final_normalization.value + final_normalization_err.value
+        final_spectrum_error = copy_func(spectral_model, final_normalization.value + final_normalization_err.value)
 
         photon_flux_error = final_spectrum_error.integral(min_energy, max_energy) - photon_flux
         energy_flux_error = final_spectrum_error.energy_flux(min_energy, max_energy) - energy_flux

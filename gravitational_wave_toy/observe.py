@@ -13,7 +13,6 @@ from astropy.io import fits
 from gammapy.modeling.models import (
     EBLAbsorptionNormSpectralModel,
     PowerLawSpectralModel,
-    TemplateSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
 from gammapy.utils.roots import find_roots
@@ -21,7 +20,7 @@ from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
 from .logging import logger
-from .sensitivity import Sensitivity
+from .sensitivity import Sensitivity, ScaledTemplateModel
 
 log = logger(__name__)
 
@@ -345,9 +344,9 @@ class GRB:
             reference=reference,
         )
         
-    def get_template_spectrum(self, time: u.Quantity):
+    def get_template_spectrum(self, time: u.Quantity, scaling_factor: int | float = 1):
         dNdE = self.get_spectrum(time)
-        return TemplateSpectralModel(energy=self.energy, values=dNdE)
+        return ScaledTemplateModel(energy=self.energy, values=dNdE, scaling_factor=scaling_factor)
 
     def fit_spectral_indices(self):
         spectra = self.spectra.T
