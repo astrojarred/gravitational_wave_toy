@@ -19,7 +19,7 @@ from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
 from .logging import logger
-from .sensitivity import Sensitivity, ScaledTemplateModel
+from .sensitivity import ScaledTemplateModel, Sensitivity
 
 log = logger(__name__)
 
@@ -46,14 +46,16 @@ class GRB:
         self.error_message = ""
         self.dist = None
         self.file_type: Literal["fits", "txt", None] = None
-        
+
         try:
             # Extract GRB ID from directory name (e.g., "GRB001" -> 1)
             if self.filepath.is_dir():
                 # For directory path, extract from directory name
                 dir_name = self.filepath.name
                 if dir_name.startswith("GRB"):
-                    self.id = int(dir_name[3:])  # Remove "GRB" prefix and convert to int
+                    self.id = int(
+                        dir_name[3:]
+                    )  # Remove "GRB" prefix and convert to int
                 else:
                     self.id = 0
             else:
@@ -66,8 +68,10 @@ class GRB:
         if self.filepath.is_dir():
             # For directories, check for txt files first, then fits files
             txt_files = list(self.filepath.glob("*.txt"))
-            fits_files = list(self.filepath.glob("*.fits")) + list(self.filepath.glob("*.fit"))
-            
+            fits_files = list(self.filepath.glob("*.fits")) + list(
+                self.filepath.glob("*.fit")
+            )
+
             if txt_files:
                 self.file_type = "txt"
                 self.read_txt()
@@ -75,7 +79,9 @@ class GRB:
                 self.file_type = "fits"
                 self.read_fits()
             else:
-                raise ValueError(f"No supported files (.txt or .fits) found in directory {self.filepath}")
+                raise ValueError(
+                    f"No supported files (.txt or .fits) found in directory {self.filepath}"
+                )
         else:
             # For single files, use original logic
             name_lower = self.filepath.name.lower()
@@ -129,7 +135,7 @@ class GRB:
     def read_txt(self) -> None:
         # expect a directory containing GRB spectral files like GRB001_tobs=00.txt, GRB001_tobs=01.txt, etc.
         dir_path = self.filepath
-        
+
         # Extract base name from directory name (e.g., "GRB001" from "/path/to/GRB001/")
         base = dir_path.name
 
@@ -162,13 +168,13 @@ class GRB:
 
         # Create time array from indices (assuming indices represent time steps)
         if time_indices[0] == 0 and time_indices[-1] == len(time_indices) - 1:
-            time_indices = np.logspace(2,5,20)
+            time_indices = np.logspace(2, 5, 20)
         self.time = u.Quantity(time_indices) * u.s
 
         # build spectra with shape (n_energy, n_time)
         spectra_stack = u.Quantity(spectra_columns)  # (n_time, n_energy)
         self.spectra = spectra_stack.T  # (n_energy, n_time)
-        
+
         # Set default metadata since we don't have lightcurve data
         self.eiso = 0 * u.erg  # Default Eiso
         self.fluence = 0 * u.Unit("1 / cm2")  # Default fluence
@@ -176,7 +182,7 @@ class GRB:
         self.angle = 0 * u.deg
         self.long = 0 * u.rad
         self.lat = 0 * u.rad
-        
+
         if not isinstance(self.min_energy, u.Quantity):
             self.min_energy = self.energy.min()
         if not isinstance(self.max_energy, u.Quantity):
@@ -228,7 +234,7 @@ class GRB:
     def set_spectral_grid(self):
         if self.SpectralGrid is not None:
             return
-        
+
         try:
             self.SpectralGrid = RegularGridInterpolator(
                 (np.log10(self.energy.value), np.log10(self.time.value)), self.spectra
@@ -238,7 +244,12 @@ class GRB:
             print(f"Time: {np.log10(self.time.value)}")
             raise e
 
-    def show_spectral_pattern(self, resolution=100, return_plot=False, cutoff_flux=1e-20 * u.Unit("1 / (cm2 s GeV)")):
+    def show_spectral_pattern(
+        self,
+        resolution=100,
+        return_plot=False,
+        cutoff_flux=1e-20 * u.Unit("1 / (cm2 s GeV)"),
+    ):
         self.set_spectral_grid()
 
         loge = np.log10(self.energy.value)
@@ -251,7 +262,7 @@ class GRB:
         for e in x:
             for t in y:
                 points.append([e, t])
-                
+
         spectrum = self.SpectralGrid(points)
         # set everything below the cutoff energy to cutoff_energy
         cutoff_flux = cutoff_flux.to("1 / (cm2 s GeV)")
@@ -342,10 +353,12 @@ class GRB:
             else amplitude,
             reference=reference,
         )
-        
+
     def get_template_spectrum(self, time: u.Quantity, scaling_factor: int | float = 1):
         dNdE = self.get_spectrum(time)
-        return ScaledTemplateModel(energy=self.energy, values=dNdE, scaling_factor=scaling_factor)
+        return ScaledTemplateModel(
+            energy=self.energy, values=dNdE, scaling_factor=scaling_factor
+        )
 
     def fit_spectral_indices(self):
         spectra = self.spectra.T
