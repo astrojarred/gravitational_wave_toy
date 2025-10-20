@@ -50,7 +50,18 @@ if TYPE_CHECKING:
 class ScaledTemplateModel(TemplateSpectralModel):
     """Scaled template spectral model for sensitivity calculations."""
 
-    def __init__(self, scaling_factor: int | float = 1, *args, **kwargs):
+    def __init__(self, scaling_factor: int | float = 1e-6, *args, **kwargs):
+        from gammapy.modeling import Parameter
+        
+        # Create a real amplitude parameter with log scaling (dimensionless)
+        self.amplitude = Parameter(
+            "amplitude", 
+            scaling_factor, 
+            unit="1 / (TeV s cm2)",  # Dimensionless scaling factor
+            interp="log"
+        )
+        self.amplitude._is_norm = True
+        
         self.scaling_factor = scaling_factor
         self._original_values = None  # Initialize before calling super
         super().__init__(*args, **kwargs)
@@ -73,14 +84,24 @@ class ScaledTemplateModel(TemplateSpectralModel):
 
     @values.setter
     def values(self, values: u.Quantity):
-        self._original_values = values
+        self._original_values = values        
+
 
     def evaluate(self, energy):
         """Evaluate the model with scaling applied."""
         # Get the unscaled evaluation from parent class
         unscaled_result = super().evaluate(energy)
-        # Apply scaling factor
-        return unscaled_result * self.scaling_factor
+        # Apply dimensionless amplitude scaling
+        return unscaled_result * self.amplitude.value
+
+    def copy(self):
+        """Create a copy of the ScaledTemplateModel with all attributes preserved."""
+        # Create a new instance with the same parameters
+        return ScaledTemplateModel(
+            energy=self.energy,
+            values=self._original_values,  # Use original values, not scaled
+            scaling_factor=self.amplitude.value,
+        )
 
 
 def _get_model_normalization_info(spectral_model):
@@ -130,18 +151,6 @@ def _get_model_normalization_info(spectral_model):
         def copy_func(model, new_norm):
             model_copy = model.copy()
             model_copy.amplitude.value = new_norm
-            return model_copy
-
-        return norm_value, norm_unit, copy_func
-
-    elif hasattr(spectral_model, "scaling_factor"):
-        # ScaledTemplateModel
-        norm_value = spectral_model.scaling_factor
-        norm_unit = u.dimensionless_unscaled
-
-        def copy_func(model, new_norm):
-            model_copy = model.copy()
-            model_copy.scaling_factor = new_norm
             return model_copy
 
         return norm_value, norm_unit, copy_func
@@ -370,6 +379,8 @@ class Sensitivity:
                     **kwargs,
                 )
 
+            # print(f"Time: {t}")
+            # print("Sensitivity:\n", s)
             self._sensitivity_information.append(s)
             sensitivity_curve.append(s["energy_flux"])
             photon_flux_curve.append(s["photon_flux"])
@@ -537,7 +548,21 @@ class Sensitivity:
 
         # Create a new model with updated normalization and replace it
         updated_model = copy_func(spectral_model, norm)
-        dataset.models[0]._spectral_model = updated_model
+        
+        # Update the model properly through the Models API
+        sky_model = SkyModel(spectral_model=updated_model, name=dataset.models[0].name)
+        dataset.models = [sky_model]
+        
+        # if hasattr(updated_model, "amplitude"):
+        #     print(f"    get_ts_difference: norm={norm}, updated_model.amplitude.value={updated_model.amplitude.value}")
+        # else:
+        #     print(f"    get_ts_difference: norm={norm}, updated_model.amplitude.value={updated_model.model1.amplitude.value}")
+
+        
+        # Test: Evaluate the model directly to see if it changes
+        # test_energy = 1 * u.TeV
+        # test_flux = updated_model(test_energy)
+        # print(f"    get_ts_difference: model(1 TeV)={test_flux}")
 
         # TODO: Check that the inputs here are correct
         n_off = dataset.counts_off.data
@@ -545,7 +570,7 @@ class Sensitivity:
         n_pred = dataset.npred_signal().data
         n_on = n_pred + alpha * n_off
 
-        # print(n_off.sum(), n_on.sum())
+        # print(f"    get_ts_difference: n_off={n_off.sum()}, n_on={n_on.sum()}, n_pred={n_pred.sum()}")
 
         stat = WStatCountsStatistic(
             n_on=n_on,
@@ -556,6 +581,8 @@ class Sensitivity:
         # TODO: how to take into account edisp?
         # i.e. correlation between different bins
         total_sqrt_ts = stat.sqrt_ts.sum()
+        
+        # print(f"    get_ts_difference: total_sqrt_ts={total_sqrt_ts}, result={total_sqrt_ts - significance}")
         # print(norm, total_sqrt_ts, total_sqrt_ts - significance)
 
         # solve this equation to find normalization
@@ -623,9 +650,13 @@ class Sensitivity:
             original_norm, norm_unit, copy_func = _get_model_normalization_info(
                 spectral_model
             )
+            
+            # print(f"Iteration {_+1}/{n_iter}: original_norm={original_norm}, norm_unit={norm_unit}")
 
             lower_bound = original_norm * lower_bound_ratio
             upper_bound = original_norm * upper_bound_ratio
+            
+            # print(f"  Bounds: [{lower_bound}, {upper_bound}]")
 
             # find upper bounds for secant method as in scipy
             root, _res = find_roots(
@@ -644,7 +675,10 @@ class Sensitivity:
 
         final_normalization = np.mean(roots) * norm_unit
         final_normalization_err = np.std(roots) * norm_unit
-
+        
+        # print(f"Final roots array: {roots}")
+        # print(f"Final mean: {np.mean(roots)}, std: {np.std(roots)}")
+        # print(f"Final normalization: {final_normalization}")
         # Create final spectrum with updated normalization
         final_spectrum = copy_func(spectral_model, final_normalization.value)
 
