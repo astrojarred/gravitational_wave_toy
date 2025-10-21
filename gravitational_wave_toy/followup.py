@@ -102,6 +102,7 @@ def get_sensitivity(
     sens_df: pd.DataFrame | None = None,
     sensitivity_curve: list | None = None,
     photon_flux_curve: list | None = None,
+    
     ebl: bool = False,
     config: str = "alpha",
     duration: int = 1800,
@@ -128,12 +129,15 @@ def get_sensitivity(
 
         sensitivity_curve = row["sensitivity_curve"]
         photon_flux_curve = row["photon_flux_curve"]
+        
+    n_sensitivity_points = len(sensitivity_curve)
 
     sens = sensitivity.Sensitivity(
         observatory=f"cta_{site}",
         radius=radius,
         min_energy=min_energy,
         max_energy=max_energy,
+        n_sensitivity_points=n_sensitivity_points,
         sensitivity_curve=sensitivity_curve * u.Unit("erg cm-2 s-1"),
         photon_flux_curve=photon_flux_curve * u.Unit("cm-2 s-1"),
     )
