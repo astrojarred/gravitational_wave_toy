@@ -18,11 +18,12 @@ def get_row(
     ebl: bool = False,
     config: str = "alpha",
     duration: int = 1800,
+    event_id_column: str = "coinc_event_id",
 ):
 
     # find row with these values
     rows = sens_df[
-        (sens_df["coinc_event_id"] == event_id)
+        (sens_df[event_id_column] == event_id)
         & (sens_df["irf_site"] == site)
         & (sens_df["irf_zenith"] == zenith)
         & (sens_df["irf_ebl"] == ebl)
@@ -47,11 +48,12 @@ def extrapolate_obs_time(
     extrapolation_df: pd.DataFrame,
     filters: dict[str, str] = {},
     other_info: list[str] = [],
+    event_id_column: str = "coinc_event_id",
 ):
     
     res = {}
     delay = delay.to("s").value
-    event_info = extrapolation_df[extrapolation_df["coinc_event_id"] == event_id]
+    event_info = extrapolation_df[extrapolation_df[event_id_column] == event_id]
     
     if filters:
         for key, value in filters.items():
@@ -106,6 +108,7 @@ def get_sensitivity(
     radius: u.Quantity = 3.0 * u.deg,
     min_energy: u.Quantity = 0.02 * u.TeV,
     max_energy: u.Quantity = 10 * u.TeV,
+    event_id_column: str = "coinc_event_id",
 ):
     
     if sens_df is None and sensitivity_curve is None:
@@ -120,6 +123,7 @@ def get_sensitivity(
             ebl=ebl,
             config=config,
             duration=duration,
+            event_id_column=event_id_column,
         )
 
         sensitivity_curve = row["sensitivity_curve"]
@@ -144,6 +148,7 @@ def get_exposure(
     zenith: int,
     grb_filepath: Path | str | None = None,
     sens_df: pd.DataFrame | None = None,
+    event_id_column: str = "coinc_event_id",
     sensitivity_curve: list | None = None,
     photon_flux_curve: list | None = None,
     extrapolation_df: pd.DataFrame | Path | str | None = None,
@@ -191,7 +196,8 @@ def get_exposure(
             delay=delay,
             extrapolation_df=extrapolation_df,
             filters={"irf_site": site, "irf_zenith": zenith},
-            other_info=["long", "lat", "eiso", "dist", "theta_view", "irf_ebl_model"]
+            other_info=["long", "lat", "eiso", "dist", "theta_view", "irf_ebl_model"],
+            event_id_column=event_id_column,
         )
         
         obs_time = obs_info["obs_time"]
@@ -241,6 +247,7 @@ def get_exposure(
         radius=radius,
         min_energy=min_energy,
         max_energy=max_energy,
+        event_id_column=event_id_column,
     )
 
     grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
