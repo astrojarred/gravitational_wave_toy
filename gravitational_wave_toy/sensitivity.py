@@ -80,6 +80,11 @@ class ScaledTemplateModel(TemplateSpectralModel):
 
     @property
     def values(self):
+        if self._original_values is None:
+            raise ValueError(
+                "ScaledTemplateModel: _original_values is None. "
+                "This should not happen if the model was properly initialized."
+            )
         return self._original_values * self.scaling_factor
 
     @values.setter
@@ -382,8 +387,19 @@ class Sensitivity:
             # print(f"Time: {t}")
             # print("Sensitivity:\n", s)
             self._sensitivity_information.append(s)
-            sensitivity_curve.append(s["energy_flux"])
-            photon_flux_curve.append(s["photon_flux"])
+            
+            # Check for NaN values
+            energy_flux = s["energy_flux"]
+            photon_flux = s["photon_flux"]
+            
+            if not np.isfinite(energy_flux.value) or not np.isfinite(photon_flux.value):
+                log.warning(
+                    f"Sensitivity calculation produced NaN/Inf at time {t}. "
+                    f"This may happen at high redshifts due to strong EBL absorption."
+                )
+            
+            sensitivity_curve.append(energy_flux)
+            photon_flux_curve.append(photon_flux)
 
         self._sensitivity_unit = sensitivity_curve[0].unit
         self._sensitivity_curve = (
@@ -395,15 +411,33 @@ class Sensitivity:
         )
 
         log_times = np.log10(times.value)
-        log_sensitivity_curve = np.log10(self._sensitivity_curve.value)
-        log_photon_flux_curve = np.log10(self._photon_flux_curve.value)
+        
+        # Filter out NaN values for interpolation
+        valid_mask = np.isfinite(self._sensitivity_curve.value)
+        
+        if not np.any(valid_mask):
+            raise ValueError(
+                "All sensitivity values are NaN. The source appears to be undetectable "
+                "at the specified parameters, possibly due to strong EBL absorption."
+            )
+        
+        if not np.all(valid_mask):
+            log.warning(
+                f"{np.sum(~valid_mask)}/{len(valid_mask)} sensitivity points are NaN. "
+                f"Interpolation will only use valid points."
+            )
+        
+        # Use only valid points for interpolation
+        log_sensitivity_curve = np.log10(self._sensitivity_curve.value[valid_mask])
+        log_photon_flux_curve = np.log10(self._photon_flux_curve.value[valid_mask])
+        log_times_valid = log_times[valid_mask]
 
         # interpolate sensitivity curve
         self._sensitivity = scipy.interpolate.interp1d(
-            log_times, log_sensitivity_curve, kind="linear", fill_value="extrapolate"
+            log_times_valid, log_sensitivity_curve, kind="linear", fill_value="extrapolate"
         )
         self._photon_flux = scipy.interpolate.interp1d(
-            log_times, log_photon_flux_curve, kind="linear", fill_value="extrapolate"
+            log_times_valid, log_photon_flux_curve, kind="linear", fill_value="extrapolate"
         )
 
     def get_sensitivity_from_model(
@@ -624,7 +658,7 @@ class Sensitivity:
             Excess.
         """
 
-        roots = np.array([])
+        roots = []
 
         for _ in range(n_iter):
             dataset = Sensitivity.simulate_spectrum(
@@ -668,16 +702,40 @@ class Sensitivity:
                 method="secant",
             )
 
-            roots = np.append(roots, root)
+            # Only append if root is finite (not NaN or inf)
+            if np.isfinite(root):
+                roots.append(root)
+            else:
+                log.warning(
+                    f"Root finding failed (returned {root}) for iteration {_+1}/{n_iter}. "
+                    f"This may happen at high redshifts due to strong EBL absorption."
+                )
 
         # Use the helper function to get normalization info
         _, norm_unit, copy_func = _get_model_normalization_info(spectral_model)
 
-        final_normalization = np.mean(roots) * norm_unit
-        final_normalization_err = np.std(roots) * norm_unit
+        # Check if we have any valid roots
+        if len(roots) == 0:
+            raise ValueError(
+                f"All {n_iter} iterations failed to find a root. "
+                f"This likely means the source is undetectable at the specified "
+                f"significance level ({significance}σ), possibly due to strong EBL absorption."
+            )
         
-        # print(f"Final roots array: {roots}")
-        # print(f"Final mean: {np.mean(roots)}, std: {np.std(roots)}")
+        # If some iterations failed, warn but continue with the valid ones
+        if len(roots) < n_iter:
+            log.warning(
+                f"Only {len(roots)}/{n_iter} iterations succeeded. "
+                f"Using only successful iterations for sensitivity estimate."
+            )
+
+        # Convert to numpy array for easier computation
+        roots_array = np.array(roots)
+        final_normalization = np.mean(roots_array) * norm_unit
+        final_normalization_err = np.std(roots_array) * norm_unit
+        
+        # print(f"Final roots array: {roots_array}")
+        # print(f"Final mean: {np.mean(roots_array)}, std: {np.std(roots_array)}")
         # print(f"Final normalization: {final_normalization}")
         # Create final spectrum with updated normalization
         final_spectrum = copy_func(spectral_model, final_normalization.value)
