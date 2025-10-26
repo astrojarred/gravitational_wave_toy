@@ -157,6 +157,7 @@ def get_exposure(
     photon_flux_curve: list | None = None,
     extrapolation_df: pd.DataFrame | Path | str | None = None,
     ebl: str | None = None,
+    redshift: float | None = None,
     config: str = "alpha",
     duration: int = 1800,
     radius: u.Quantity = 3.0 * u.deg,
@@ -255,6 +256,9 @@ def get_exposure(
     )
 
     grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
+    
+    if redshift is not None:
+        grb.set_ebl_model(ebl, z=redshift)
 
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', r'All-NaN slice encountered')
