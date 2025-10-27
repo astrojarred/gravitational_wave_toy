@@ -1,6 +1,7 @@
 import math
 import os
 import re
+import warnings
 from pathlib import Path
 from typing import Literal
 
@@ -178,7 +179,7 @@ class GRB:
         # Set default metadata since we don't have lightcurve data
         self.eiso = 0 * u.erg  # Default Eiso
         self.fluence = 0 * u.Unit("1 / cm2")  # Default fluence
-        self.dist = Distance(z=0.0)  # Default redshift
+        self.dist = None # default to None, will be set by redshift if provided
         self.angle = 0 * u.deg
         self.long = 0 * u.rad
         self.lat = 0 * u.rad
@@ -205,11 +206,14 @@ class GRB:
         # Update distance if a new redshift is supplied
         if z is not None:
             if (current_z_val is None) or (not np.isclose(z, current_z_val)):
-                self.dist = Distance(z=z)
+                # Suppress the astropy cosmology optimizer warning
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', message='.*fval is not bracketed.*')
+                    self.dist = Distance(z=z)
                 distance_changed = True
 
         # Configure EBL model
-        if ebl is not None:
+        if ebl is not None and self.dist is not None:
             if ebl not in list(EBL_DATA_BUILTIN.keys()):
                 raise ValueError(
                     f"ebl must be one of {list(EBL_DATA_BUILTIN.keys())}, got {ebl}"
@@ -237,7 +241,10 @@ class GRB:
 
         try:
             self.SpectralGrid = RegularGridInterpolator(
-                (np.log10(self.energy.value), np.log10(self.time.value)), self.spectra
+                (np.log10(self.energy.value), np.log10(self.time.value)), 
+                self.spectra,
+                bounds_error=False,
+                fill_value=None
             )
         except Exception as e:
             print(f"Energy: {np.log10(self.energy.value)}")
