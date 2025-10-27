@@ -102,7 +102,6 @@ def get_sensitivity(
     sens_df: pd.DataFrame | None = None,
     sensitivity_curve: list | None = None,
     photon_flux_curve: list | None = None,
-    
     ebl: bool = False,
     config: str = "alpha",
     duration: int = 1800,
@@ -112,8 +111,8 @@ def get_sensitivity(
     event_id_column: str = "coinc_event_id",
 ):
     
-    if sens_df is None and sensitivity_curve is None:
-        raise ValueError("Must provide either sens_df or sensitivity_curve")
+    if sens_df is None and (sensitivity_curve is None or photon_flux_curve is None):
+        raise ValueError("Must provide either sens_df or both sensitivity_curve and photon_flux_curve")
     if sens_df is not None:
 
         row = get_row(
