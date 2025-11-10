@@ -198,7 +198,7 @@ class GRB:
         current_z_val = None
         try:
             current_z_val = float(self.dist.z.value)
-        except Exception:
+        except (AttributeError, TypeError):
             current_z_val = None
 
         # Update distance if a new redshift is supplied
@@ -249,8 +249,8 @@ class GRB:
                 fill_value=None,
             )
         except Exception as e:
-            print(f"Energy: {np.log10(self.energy.value)}")
-            print(f"Time: {np.log10(self.time.value)}")
+            log.error(f"Energy: {np.log10(self.energy.value)}")
+            log.error(f"Time: {np.log10(self.time.value)}")
             raise e
 
     def show_spectral_pattern(

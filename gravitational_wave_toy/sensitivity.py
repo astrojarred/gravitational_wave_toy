@@ -53,10 +53,10 @@ class ScaledTemplateModel(TemplateSpectralModel):
 
     def __init__(self, scaling_factor: int | float = 1e-6, *args, **kwargs):
         # Create a real amplitude parameter with log scaling
+        # Use public API to set normalization if available; otherwise, document the use of the private attribute.
         self.amplitude = Parameter(
-            "amplitude", scaling_factor, unit="1 / (TeV s cm2)", interp="log"
+            "amplitude", scaling_factor, unit="1 / (TeV s cm2)", interp="log", is_norm=True
         )
-        self.amplitude._is_norm = True
 
         self._original_values = None  # Initialize before calling super
         super().__init__(*args, **kwargs)
@@ -173,6 +173,8 @@ def _get_model_normalization_info(spectral_model):
 
 
 class Sensitivity:
+    ALLOWED_MODES = ["sensitivity", "photon_flux"]
+
     def __init__(
         self,
         observatory: str,
@@ -305,8 +307,9 @@ class Sensitivity:
         t: u.Quantity | int | float,
         mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
-        if mode not in ["sensitivity", "photon_flux"]:
-            raise ValueError(f"mode must be 'sensitivity' or 'photon_flux', got {mode}")
+        if mode not in Sensitivity.ALLOWED_MODES:
+            allowed_str = " or ".join(f"'{m}'" for m in Sensitivity.ALLOWED_MODES)
+            raise ValueError(f"mode must be {allowed_str}, got {mode}")
 
         if isinstance(t, (int, float)):
             t = t * u.s

@@ -118,10 +118,18 @@ def get_sensitivity(
     max_energy: u.Quantity = 10 * u.TeV,
     event_id_column: str = "coinc_event_id",
 ):
-    if sens_df is None and (sensitivity_curve is None or photon_flux_curve is None):
-        raise ValueError(
-            "Must provide either sens_df or both sensitivity_curve and photon_flux_curve"
-        )
+    # Enforce sens_df OR sensitivity_curve and photon_flux_curve
+    if sens_df is not None:
+        if sensitivity_curve is not None or photon_flux_curve is not None:
+            raise ValueError(
+                "If sens_df is provided, sensitivity_curve and photon_flux_curve must both be None."
+            )
+    else:
+        if sensitivity_curve is None or photon_flux_curve is None:
+            raise ValueError(
+                "Must provide either sens_df or both sensitivity_curve and photon_flux_curve"
+            )
+
     if sens_df is not None:
         row = get_row(
             sens_df=sens_df,
