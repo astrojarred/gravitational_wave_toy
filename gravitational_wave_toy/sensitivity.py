@@ -58,10 +58,19 @@ class ScaledTemplateModel(TemplateSpectralModel):
         )
         self.amplitude._is_norm = True
 
-        self.scaling_factor = scaling_factor
         self._original_values = None  # Initialize before calling super
         super().__init__(*args, **kwargs)
         # When super().__init__ sets self.values, our setter stores it in _original_values
+
+    @property
+    def scaling_factor(self):
+        """Scaling factor property that syncs with amplitude.value."""
+        return self.amplitude.value
+
+    @scaling_factor.setter
+    def scaling_factor(self, value: int | float):
+        """Set scaling factor by updating amplitude.value."""
+        self.amplitude.value = value
 
     @classmethod
     def from_template(
@@ -81,7 +90,8 @@ class ScaledTemplateModel(TemplateSpectralModel):
                 "ScaledTemplateModel: _original_values is None. "
                 "This should not happen if the model was properly initialized."
             )
-        return self._original_values * self.scaling_factor
+        # Use amplitude.value to ensure consistency with evaluate()
+        return self._original_values * self.amplitude.value
 
     @values.setter
     def values(self, values: u.Quantity):
@@ -97,10 +107,11 @@ class ScaledTemplateModel(TemplateSpectralModel):
     def copy(self):
         """Create a copy of the ScaledTemplateModel with all attributes preserved."""
         # Create a new instance with the same parameters
+        # scaling_factor property will automatically sync with amplitude.value
         return ScaledTemplateModel(
             energy=self.energy,
             values=self._original_values,  # Use original values, not scaled
-            scaling_factor=self.amplitude.value,
+            scaling_factor=self.scaling_factor,  # Property getter returns amplitude.value
         )
 
 
