@@ -1,5 +1,7 @@
 import math
 import os
+import re
+import warnings
 from pathlib import Path
 from typing import Literal
 
@@ -18,7 +20,7 @@ from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
 from .logging import logger
-from .sensitivity import Sensitivity
+from .sensitivity import ScaledTemplateModel, Sensitivity
 
 log = logger(__name__)
 
@@ -43,12 +45,77 @@ class GRB:
         self.start_time = -1 * u.s
         self.end_time = -1 * u.s
         self.error_message = ""
+        self.dist = None
+        self.file_type: Literal["fits", "txt", None] = None
+
         try:
-            self.id = int(self.filepath.stem.split("_")[1])
-        except ValueError:
+            # Extract GRB ID from directory name (e.g., "GRB001" -> 1)
+            if self.filepath.is_dir():
+                # For directory path, extract from directory name
+                dir_name = self.filepath.name
+                if dir_name.startswith("GRB"):
+                    self.id = int(
+                        dir_name[3:]
+                    )  # Remove "GRB" prefix and convert to int
+                else:
+                    self.id = 0
+            else:
+                # For file path, use original logic
+                self.id = int(self.filepath.stem.split("_")[1])
+        except (ValueError, IndexError):
             self.id = 0
 
-        with fits.open(filepath) as hdu_list:
+        # choose reader based on file extension or directory contents
+        if self.filepath.is_dir():
+            # For directories, check for txt files first, then fits files
+            txt_files = list(self.filepath.glob("*.txt"))
+            fits_files = list(self.filepath.glob("*.fits")) + list(
+                self.filepath.glob("*.fit")
+            )
+
+            if txt_files:
+                self.file_type = "txt"
+                self.read_txt()
+            elif fits_files:
+                self.file_type = "fits"
+                self.read_fits()
+            else:
+                raise ValueError(
+                    f"No supported files (.txt or .fits) found in directory {self.filepath}"
+                )
+        else:
+            # For single files, use original logic
+            name_lower = self.filepath.name.lower()
+            if name_lower.endswith((".fits", ".fit", ".fits.gz", ".fit.gz")):
+                self.file_type = "fits"
+                self.read_fits()
+            elif name_lower.endswith(".txt"):
+                self.file_type = "txt"
+                self.read_txt()
+            else:
+                raise ValueError(f"Unsupported file format for {self.filepath}")
+
+        # set spectral grid
+        self.SpectralGrid = None
+        self.set_spectral_grid()
+
+        # fit spectral indices
+        self.fit_spectral_indices()
+
+        # set EBL model (and optionally update distance via redshift)
+        if self.dist is not None and not self.dist == 0:
+            self.set_ebl_model(ebl)
+        else:
+            self.ebl = None
+            self.ebl_model = None
+
+        log.debug(f"Loaded event {self.id}º")
+
+    def __repr__(self):
+        return f"<GRB(id={self.id})>"
+
+    def read_fits(self) -> None:
+        with fits.open(self.filepath) as hdu_list:
             self.long = hdu_list[0].header["LONG"] * u.Unit("rad")
             self.lat = hdu_list[0].header["LAT"] * u.Unit("rad")
             self.eiso = hdu_list[0].header["EISO"] * u.Unit("erg")
@@ -66,19 +133,93 @@ class GRB:
                 [datalc.field(i) for i, e in enumerate(self.energy)]
             ) * u.Unit("1 / (cm2 s GeV)")
 
-        # set spectral grid
-        self.set_spectral_grid()
+    def read_txt(self) -> None:
+        # expect a directory containing GRB spectral files like GRB001_tobs=00.txt, GRB001_tobs=01.txt, etc.
+        dir_path = self.filepath
 
-        # fit spectral indices
-        self.fit_spectral_indices()
+        # Extract base name from directory name (e.g., "GRB001" from "/path/to/GRB001/")
+        base = dir_path.name
 
-        # set EBL model
-        if ebl is not None:
+        # find spectral files in directory
+        candidates = list(dir_path.glob(f"{base}_tobs=*.txt"))
+        if len(candidates) == 0:
+            raise FileNotFoundError(
+                f"No spectral files matching {base}_tobs=*.txt found in {dir_path}"
+            )
+
+        def extract_index(p: Path) -> int:
+            m = re.search(r"_tobs=(\d+)(?:_|\.|$)", p.name)
+            return int(m.group(1)) if m else -1
+
+        candidates.sort(key=extract_index)
+
+        spectra_columns = []  # list of flux arrays per time
+        time_indices = []
+
+        for p in candidates:
+            arr = np.loadtxt(p)
+            energy = arr[:, 0] * u.GeV
+            dNdE = arr[:, 1] * u.Unit("1 / (cm2 s GeV)")
+
+            spectra_columns.append(dNdE)
+            time_indices.append(extract_index(p))
+
+        # set energy grid
+        self.energy = energy
+
+        # Create time array from indices (assuming indices represent time steps)
+        self.time = u.Quantity(time_indices) * u.s
+
+        # build spectra with shape (n_energy, n_time)
+        spectra_stack = u.Quantity(spectra_columns)  # (n_time, n_energy)
+        self.spectra = spectra_stack.T  # (n_energy, n_time)
+
+        # Set default metadata since we don't have lightcurve data
+        self.eiso = 0 * u.erg  # Default Eiso
+        self.fluence = 0 * u.Unit("1 / cm2")  # Default fluence
+        self.dist = None  # default to None, will be set by redshift if provided
+        self.angle = 0 * u.deg
+        self.long = 0 * u.rad
+        self.lat = 0 * u.rad
+
+        if not isinstance(self.min_energy, u.Quantity):
+            self.min_energy = self.energy.min()
+        if not isinstance(self.max_energy, u.Quantity):
+            self.max_energy = self.energy.max()
+
+    def set_ebl_model(self, ebl: str | None, z: float | None = None) -> bool:
+        """Set or update the EBL absorption model and optionally the source redshift.
+
+        Returns True if the distance (redshift) was changed.
+        """
+        distance_changed = False
+
+        # Determine current redshift if available
+        current_z_val = None
+        try:
+            current_z_val = float(self.dist.z.value)
+        except (AttributeError, TypeError):
+            current_z_val = None
+
+        # Update distance if a new redshift is supplied
+        if z is not None:
+            if (current_z_val is None) or (not np.isclose(z, current_z_val)):
+                # Suppress the astropy cosmology optimizer warning
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*fval is not bracketed.*",
+                        category=RuntimeWarning,
+                    )
+                    self.dist = Distance(z=z)
+                distance_changed = True
+
+        # Configure EBL model
+        if ebl is not None and self.dist is not None:
             if ebl not in list(EBL_DATA_BUILTIN.keys()):
                 raise ValueError(
                     f"ebl must be one of {list(EBL_DATA_BUILTIN.keys())}, got {ebl}"
                 )
-            # check that environment variable is set
             if not os.environ.get("GAMMAPY_DATA"):
                 raise ValueError(
                     "GAMMAPY_DATA environment variable not set. "
@@ -87,42 +228,59 @@ class GRB:
                 )
 
             self.ebl = EBLAbsorptionNormSpectralModel.read_builtin(
-                ebl,
-                redshift=self.dist.z,
+                ebl, redshift=self.dist.z.value
             )
             self.ebl_model = ebl
         else:
             self.ebl = None
             self.ebl_model = None
 
-        log.debug(f"Loaded event {self.angle}º")
-
-    def __repr__(self):
-        return f"<GRB(id={self.id})>"
+        return distance_changed
 
     def set_spectral_grid(self):
-        self.SpectralGrid = RegularGridInterpolator(
-            (np.log10(self.energy.value), np.log10(self.time.value)), self.spectra
-        )
+        if self.SpectralGrid is not None:
+            return
 
-    def show_spectral_pattern(self, resolution=100, return_plot=False):
+        try:
+            self.SpectralGrid = RegularGridInterpolator(
+                (np.log10(self.energy.value), np.log10(self.time.value)),
+                self.spectra,
+                bounds_error=False,
+                fill_value=None,
+            )
+        except Exception as e:
+            log.error(f"Energy: {np.log10(self.energy.value)}")
+            log.error(f"Time: {np.log10(self.time.value)}")
+            raise e
+
+    def show_spectral_pattern(
+        self,
+        resolution=100,
+        return_plot=False,
+        cutoff_flux=1e-20 * u.Unit("1 / (cm2 s GeV)"),
+    ):
         self.set_spectral_grid()
 
-        loge = np.around(np.log10(self.energy.value), 1)
-        logt = np.around(np.log10(self.time.value), 1)
+        loge = np.log10(self.energy.value)
+        logt = np.log10(self.time.value)
 
-        x = np.around(np.linspace(min(loge), max(loge), resolution + 1), 1)[::-1]
-        y = np.around(np.linspace(min(logt), max(logt), resolution + 1), 1)
+        x = np.linspace(loge.min(), loge.max(), resolution + 1)[::-1]
+        y = np.linspace(logt.min(), logt.max(), resolution + 1)
 
         points = []
         for e in x:
             for t in y:
                 points.append([e, t])
 
-        plt.xlabel("Log(t)")
-        plt.ylabel("Log(E)")
+        spectrum = self.SpectralGrid(points)
+        # set everything below the cutoff energy to cutoff_energy
+        cutoff_flux = cutoff_flux.to("1 / (cm2 s GeV)")
+        spectrum[spectrum < cutoff_flux.value] = cutoff_flux.value
+
+        plt.xlabel("Log(t [s])")
+        plt.ylabel("Log(E [GeV])")
         plt.imshow(
-            np.log10(self.SpectralGrid(points)).reshape(resolution + 1, resolution + 1),
+            np.log10(spectrum).reshape(resolution + 1, resolution + 1),
             extent=(logt.min(), logt.max(), loge.min(), loge.max()),
             cmap="viridis",
             aspect="auto",
@@ -131,7 +289,6 @@ class GRB:
 
         if return_plot:
             return plt
-
     def get_spectrum(
         self, time: u.Quantity, energy: u.Quantity | None = None
     ) -> float | np.ndarray:
@@ -203,6 +360,12 @@ class GRB:
             if amplitude is None
             else amplitude,
             reference=reference,
+        )
+
+    def get_template_spectrum(self, time: u.Quantity, scaling_factor: int | float = 1):
+        dNdE = self.get_spectrum(time)
+        return ScaledTemplateModel(
+            energy=self.energy, values=dNdE, scaling_factor=scaling_factor
         )
 
     def fit_spectral_indices(self):
@@ -301,33 +464,26 @@ class GRB:
         if self.min_energy is None or self.max_energy is None:
             raise ValueError("Please set min and max energy for integral spectrum.")
 
-        spectral_index = self.get_spectral_index(time)
-        amount_to_add = 1 if mode == "ctools" else 2
-        spectral_index_plus = spectral_index + amount_to_add
+        # spectral_index = self.get_spectral_index(time)
+        # amount_to_add = 1 if mode == "ctools" else 2
+        # spectral_index_plus = spectral_index + amount_to_add
 
-        if not use_model:
-            integral_spectrum = (
-                self.get_flux(first_energy_bin, time=time)
-                * (first_energy_bin ** (-spectral_index) / spectral_index_plus)
-                * (
-                    (self.max_energy**spectral_index_plus)
-                    - (self.min_energy**spectral_index_plus)
-                )
-            )
-        else:
+        if use_model:
             model = self.get_gammapy_spectrum(time)
+        else:
+            model = self.get_template_spectrum(time)
 
-            if self.ebl is not None:
-                model = model * self.ebl
+        if self.ebl is not None:
+            model = model * self.ebl
 
-            if mode == "photon_flux":
-                integral_spectrum = model.integral(
-                    energy_min=self.min_energy, energy_max=self.max_energy
-                ).to("cm-2 s-1")
-            else:
-                integral_spectrum = model.energy_flux(
-                    energy_min=self.min_energy, energy_max=self.max_energy
-                ).to("GeV cm-2 s-1")
+        if mode == "photon_flux":
+            integral_spectrum = model.integral(
+                energy_min=self.min_energy, energy_max=self.max_energy
+            ).to("cm-2 s-1")
+        else:
+            integral_spectrum = model.energy_flux(
+                energy_min=self.min_energy, energy_max=self.max_energy
+            ).to("GeV cm-2 s-1")
 
         return integral_spectrum
 
@@ -422,7 +578,7 @@ class GRB:
             mode=sensitivity_mode,
         ).to("GeV / (cm2 s)" if sensitivity_mode == "sensitivity" else "1 / (cm2 s)")
 
-        exposure_time = stop_time - start_time
+        # exposure_time = stop_time - start_time
 
         # print(f"{'++' if average_flux > sens else '--'}, Exp time: {exposure_time}, Average flux: {average_flux}, Sensitivity: {sens}")
         return np.log10(average_flux.value) - np.log10(sens.value)

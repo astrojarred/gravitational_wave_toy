@@ -1,7 +1,14 @@
 import logging
 
+
 class logger:
-    def __init__(self, name: str, filename: str = "./gwtoy.log", level: int = logging.INFO, file_level: int = logging.DEBUG) -> None:
+    def __init__(
+        self,
+        name: str,
+        filename: str = "./gwtoy.log",
+        level: int = logging.INFO,
+        file_level: int = logging.DEBUG,
+    ) -> None:
         self.name = name
         self.filename = filename
         self.file_level = file_level
@@ -20,7 +27,9 @@ class logger:
         stream_handler.setLevel(self.level)
 
         # Create a formatter and add it to the handlers
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         file_handler.setFormatter(formatter)
         stream_handler.setFormatter(formatter)
 
@@ -42,7 +51,8 @@ class logger:
 
     def critical(self, message: str) -> None:
         self.logger.critical(message)
-        
+
+
 """python
 # example usage
 from gravitational_wave_toy.logging import logger

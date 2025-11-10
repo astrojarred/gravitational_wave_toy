@@ -1,13 +1,12 @@
 import os
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import astropy.units as u
 import numpy as np
 import scipy
-import scipy.integrate
 import scipy.interpolate
-import scipy.stats
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.table.table import Table
@@ -17,7 +16,7 @@ from gammapy.data import (
     observatory_locations,
 )
 from gammapy.datasets import SpectrumDataset, SpectrumDatasetOnOff
-from gammapy.estimators import SensitivityEstimator, FluxPoints
+from gammapy.estimators import SensitivityEstimator
 from gammapy.irf import load_irf_dict_from_file
 from gammapy.makers import (
     ReflectedRegionsBackgroundMaker,
@@ -25,16 +24,18 @@ from gammapy.makers import (
     WobbleRegionsFinder,
 )
 from gammapy.maps import MapAxis, RegionGeom
+from gammapy.modeling import Parameter
 from gammapy.modeling.models import (
     CompoundSpectralModel,
     EBLAbsorptionNormSpectralModel,
     PowerLawSpectralModel,
-    SpectralModel,
     SkyModel,
+    SpectralModel,
+    TemplateSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
-from gammapy.utils.roots import find_roots
 from gammapy.stats import WStatCountsStatistic
+from gammapy.utils.roots import find_roots
 from regions import CircleSkyRegion
 
 from .logging import logger
@@ -47,7 +48,130 @@ if TYPE_CHECKING:
     from .observe import GRB
 
 
+class ScaledTemplateModel(TemplateSpectralModel):
+    """Scaled template spectral model for sensitivity calculations."""
+
+    def __init__(self, scaling_factor: int | float = 1e-6, *args, **kwargs):
+        # Create a real amplitude parameter with log scaling
+        # Use public API to set normalization if available; otherwise, document the use of the private attribute.
+        self.amplitude = Parameter(
+            "amplitude", scaling_factor, unit="1 / (TeV s cm2)", interp="log", is_norm=True
+        )
+
+        self._original_values = None  # Initialize before calling super
+        super().__init__(*args, **kwargs)
+        # When super().__init__ sets self.values, our setter stores it in _original_values
+
+    @property
+    def scaling_factor(self):
+        """Scaling factor property that syncs with amplitude.value."""
+        return self.amplitude.value
+
+    @scaling_factor.setter
+    def scaling_factor(self, value: int | float):
+        """Set scaling factor by updating amplitude.value."""
+        self.amplitude.value = value
+
+    @classmethod
+    def from_template(
+        cls, model: TemplateSpectralModel, scaling_factor: int | float = 1
+    ):
+        """
+        Factory method to create a ScaledTemplateModel from an existing TemplateSpectralModel.
+        """
+        return cls(
+            energy=model.energy, values=model.values, scaling_factor=scaling_factor
+        )
+
+    @property
+    def values(self):
+        if self._original_values is None:
+            raise ValueError(
+                "ScaledTemplateModel: _original_values is None. "
+                "This should not happen if the model was properly initialized."
+            )
+        # Use amplitude.value to ensure consistency with evaluate()
+        return self._original_values * self.amplitude.value
+
+    @values.setter
+    def values(self, values: u.Quantity):
+        self._original_values = values
+
+    def evaluate(self, energy):
+        """Evaluate the model with scaling applied."""
+        # Get the unscaled evaluation from parent class
+        unscaled_result = super().evaluate(energy)
+        # Apply dimensionless amplitude scaling
+        return unscaled_result * self.amplitude.value
+
+    def copy(self):
+        """Create a copy of the ScaledTemplateModel with all attributes preserved."""
+        # Create a new instance with the same parameters
+        # scaling_factor property will automatically sync with amplitude.value
+        return ScaledTemplateModel(
+            energy=self.energy,
+            values=self._original_values,  # Use original values, not scaled
+            scaling_factor=self.scaling_factor,  # Property getter returns amplitude.value
+        )
+
+
+def _get_model_normalization_info(spectral_model):
+    """
+    Extract normalization information from different spectral model types.
+
+    Parameters
+    ----------
+    spectral_model : SpectralModel
+        The spectral model to extract normalization from.
+
+    Returns
+    -------
+    tuple
+        (normalization_value, normalization_unit, model_copy_function)
+    """
+    if isinstance(spectral_model, CompoundSpectralModel):
+        # For compound models, check if the first component has amplitude
+        if hasattr(spectral_model.model1, "amplitude"):
+            norm_value = spectral_model.model1.amplitude.value
+            norm_unit = spectral_model.model1.amplitude.unit
+
+            def copy_func(model, new_norm):
+                model_copy = model.copy()
+                model_copy.model1.amplitude.value = new_norm
+                return model_copy
+
+            return norm_value, norm_unit, copy_func
+        else:
+            # Fallback: use scaling factor if it's a ScaledTemplateModel
+            if hasattr(spectral_model.model1, "scaling_factor"):
+                norm_value = spectral_model.model1.scaling_factor
+                norm_unit = u.dimensionless_unscaled
+
+                def copy_func(model, new_norm):
+                    model_copy = model.copy()
+                    model_copy.model1.scaling_factor = new_norm
+                    return model_copy
+
+                return norm_value, norm_unit, copy_func
+
+    elif hasattr(spectral_model, "amplitude"):
+        # Standard models with amplitude parameter
+        norm_value = spectral_model.amplitude.value
+        norm_unit = spectral_model.amplitude.unit
+
+        def copy_func(model, new_norm):
+            model_copy = model.copy()
+            model_copy.amplitude.value = new_norm
+            return model_copy
+
+        return norm_value, norm_unit, copy_func
+
+    else:
+        raise ValueError(f"Unsupported spectral model type: {type(spectral_model)}")
+
 class Sensitivity:
+    ALLOWED_MODES = ["sensitivity", "photon_flux"]
+
     def __init__(
         self,
         observatory: str,
@@ -124,7 +248,7 @@ class Sensitivity:
             * u.s
         )
         self.energy_limits = (min_energy.to("GeV"), max_energy.to("GeV"))
-        
+
         if sensitivity_curve is not None:
             self._sensitivity_curve = sensitivity_curve
             self._sensitivity_unit = sensitivity_curve[0].unit
@@ -138,7 +262,7 @@ class Sensitivity:
             self._sensitivity_curve = []
             self._sensitivity_unit = None
             self._sensitivity = None
-            
+
         if photon_flux_curve is not None:
             self._photon_flux_curve = photon_flux_curve
             self._photon_flux_unit = photon_flux_curve[0].unit
@@ -146,40 +270,44 @@ class Sensitivity:
                 np.log10(self.times.value),
                 np.log10(self._photon_flux_curve.value),
                 kind="linear",
-                fill_value="extrapolate"
+                fill_value="extrapolate",
             )
         else:
             self._photon_flux_curve = []
             self._photon_flux_unit = None
             self._photon_flux = None
-            
+
         self._sensitivity_information = []
 
     @property
     def sensitivity_curve(self):
         return self._sensitivity_curve
-    
+
     @property
     def photon_flux_curve(self):
         return self._photon_flux_curve
-    
+
     def table(self):
         if not self._sensitivity_information:
             return None
-        
+
         return Table(self._sensitivity_information)
-    
+
     def pandas(self):
         if not self._sensitivity_information:
             return None
-        
+
         return self.table().to_pandas()
 
-    def get(self, t: u.Quantity | int | float, mode: Literal["sensitivity", "photon_flux"] = "sensitivity"):
-        
-        if mode not in ["sensitivity", "photon_flux"]:
-            raise ValueError(f"mode must be 'sensitivity' or 'photon_flux', got {mode}")
-        
+    def get(
+        self,
+        t: u.Quantity | int | float,
+        mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
+    ):
+        if mode not in Sensitivity.ALLOWED_MODES:
+            allowed_str = " or ".join(f"'{m}'" for m in Sensitivity.ALLOWED_MODES)
+            raise ValueError(f"mode must be {allowed_str}, got {mode}")
+
         if isinstance(t, (int, float)):
             t = t * u.s
 
@@ -189,17 +317,17 @@ class Sensitivity:
         t = t.to("s")
 
         log_t = np.log10(t.value)
-        
+
         if mode == "sensitivity":
             if not self._sensitivity:
                 raise ValueError("Sensitivity curve not yet calculated for this GRB.")
             log_sensitivity = self._sensitivity(log_t)
             return 10**log_sensitivity * self._sensitivity_unit
-        elif mode == "photon_flux":
-            if not self._photon_flux:
-                raise ValueError("Photon flux curve not yet calculated for this GRB.")
-            log_photon_flux = self._photon_flux(log_t)
-            return 10**log_photon_flux * self._photon_flux_unit
+
+        if not self._photon_flux:
+            raise ValueError("Photon flux curve not yet calculated for this GRB.")
+        log_photon_flux = self._photon_flux(log_t)
+        return 10**log_photon_flux * self._photon_flux_unit
 
     def get_sensitivity_curve(
         self,
@@ -209,6 +337,7 @@ class Sensitivity:
         n_bins: int | None = None,
         starting_amplitude: u.Quantity = 1e-12 * u.Unit("TeV-1 cm-2 s-1"),
         reference: u.Quantity = 1 * u.TeV,
+        use_model: bool = True,
         **kwargs,
     ):
         if not n_sensitivity_points:
@@ -230,23 +359,55 @@ class Sensitivity:
         if not n_bins:
             n_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
 
-        for t in times:
-            s = self.get_sensitivity_from_model(
-                t=t,
-                index=grb.get_spectral_index(t),
-                amplitude=starting_amplitude,
-                reference=reference,
-                redshift=grb.dist.z,
-                sensitivity_type="integral",
-                offset=offset,
-                n_bins=n_bins,
-                **kwargs,
+        if grb.file_type == "txt" and use_model:
+            # raise a warning that we are using a power law model
+            warnings.warn(
+                "Using a power law model for sensitivity calculation. If you don't want to fit a power law, set use_model=False.",
+                UserWarning,
             )
 
+        for t in times:
+            if use_model:
+                s = self.get_sensitivity_from_model(
+                    t=t,
+                    spectral_model=PowerLawSpectralModel(
+                        index=-grb.get_spectral_index(t),
+                        amplitude=starting_amplitude,
+                        reference=reference,
+                    ),
+                    redshift=grb.dist.z if grb.dist is not None else 0,
+                    sensitivity_type="integral",
+                    offset=offset,
+                    n_bins=n_bins,
+                    **kwargs,
+                )
+            else:
+                s = self.get_sensitivity_from_model(
+                    t=t,
+                    spectral_model=grb.get_template_spectrum(t),
+                    redshift=grb.dist.z if grb.dist is not None else 0,
+                    sensitivity_type="integral",
+                    offset=offset,
+                    n_bins=n_bins,
+                    **kwargs,
+                )
+
+            # print(f"Time: {t}")
+            # print("Sensitivity:\n", s)
             self._sensitivity_information.append(s)
-            sensitivity_curve.append(s["energy_flux"])
-            photon_flux_curve.append(s["photon_flux"])
-            
+
+            # Check for NaN values
+            energy_flux = s["energy_flux"]
+            photon_flux = s["photon_flux"]
+
+            if not np.isfinite(energy_flux.value) or not np.isfinite(photon_flux.value):
+                log.warning(
+                    f"Sensitivity calculation produced NaN/Inf at time {t}. "
+                    f"This may happen at high redshifts due to strong EBL absorption."
+                )
+
+            sensitivity_curve.append(energy_flux)
+            photon_flux_curve.append(photon_flux)
 
         self._sensitivity_unit = sensitivity_curve[0].unit
         self._sensitivity_curve = (
@@ -258,23 +419,45 @@ class Sensitivity:
         )
 
         log_times = np.log10(times.value)
-        log_sensitivity_curve = np.log10(self._sensitivity_curve.value)
-        log_photon_flux_curve = np.log10(self._photon_flux_curve.value)
+
+        # Filter out NaN values for interpolation
+        valid_mask = np.isfinite(self._sensitivity_curve.value)
+
+        if not np.any(valid_mask):
+            raise ValueError(
+                "All sensitivity values are NaN. The source appears to be undetectable "
+                "at the specified parameters, possibly due to strong EBL absorption."
+            )
+
+        if not np.all(valid_mask):
+            log.warning(
+                f"{np.sum(~valid_mask)}/{len(valid_mask)} sensitivity points are NaN. "
+                f"Interpolation will only use valid points."
+            )
+
+        # Use only valid points for interpolation
+        log_sensitivity_curve = np.log10(self._sensitivity_curve.value[valid_mask])
+        log_photon_flux_curve = np.log10(self._photon_flux_curve.value[valid_mask])
+        log_times_valid = log_times[valid_mask]
 
         # interpolate sensitivity curve
         self._sensitivity = scipy.interpolate.interp1d(
-            log_times, log_sensitivity_curve, kind="linear", fill_value="extrapolate"
+            log_times_valid,
+            log_sensitivity_curve,
+            kind="linear",
+            fill_value="extrapolate",
         )
         self._photon_flux = scipy.interpolate.interp1d(
-            log_times, log_photon_flux_curve, kind="linear", fill_value="extrapolate"
+            log_times_valid,
+            log_photon_flux_curve,
+            kind="linear",
+            fill_value="extrapolate",
         )
 
     def get_sensitivity_from_model(
         self,
         t: u.Quantity,  # [s]
-        index: float,
-        amplitude: u.Quantity,  # [GeV-1 cm-2 s-1]
-        reference: u.Quantity | None = None,  # [GeV]
+        spectral_model: SpectralModel,
         redshift: float = 0.0,
         sensitivity_type: Literal["integral", "differential"] = "integral",
         n_bins: int | None = None,
@@ -287,26 +470,15 @@ class Sensitivity:
             raise ValueError(f"t must be a time quantity, got {t}")
         t = t.to("s")
 
-        try:
-            amplitude = amplitude.to("TeV-1 cm-2 s-1")
-        except u.UnitConversionError:
-            raise ValueError(f"amplitude must be a flux quantity, got {amplitude}")
-        if reference is None:
-            reference = 1 * u.TeV
-
-        t_model = PowerLawSpectralModel(
-            index=-index,
-            amplitude=amplitude,
-            reference=reference,
-        )
-
-        if self.ebl is not None:
+        # Apply EBL absorption if specified
+        if self.ebl is not None and redshift > 0:
             ebl_model = EBLAbsorptionNormSpectralModel.read_builtin(
                 self.ebl,
                 redshift=redshift,
             )
-
-            t_model = t_model * ebl_model
+            t_model = spectral_model * ebl_model
+        else:
+            t_model = spectral_model
 
         if sensitivity_type == "integral":
             sens_result = self.estimate_integral_sensitivity(
@@ -335,7 +507,7 @@ class Sensitivity:
             )
 
         return sens_result
-    
+
     @staticmethod
     def simulate_spectrum(
         irf: str | Path,
@@ -351,13 +523,11 @@ class Sensitivity:
         offset: u.Quantity = 0 * u.deg,
         acceptance: float = 1,
         acceptance_off: float = 3,
-        random_state="random-seed"
+        random_state="random-seed",
     ):
-        
         if not n_bins:
             n_bins = int(np.log10(max_energy / min_energy) * 5)
-            
-        
+
         energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)
         energy_axis_true = MapAxis.from_energy_bounds(
             0.01 * u.TeV, 100 * u.TeV, nbin=100, name="energy_true"
@@ -380,7 +550,7 @@ class Sensitivity:
         obs = Observation.create(
             pointing=pointing_info, irfs=irfs, livetime=duration, location=location
         )
-        
+
         # Make the SpectrumDataset
         geom = RegionGeom.create(region=on_region, axes=[energy_axis])
 
@@ -406,49 +576,52 @@ class Sensitivity:
         )
         factor = (1 - np.cos(on_radii)) / (1 - np.cos(geom.region.radius))
         dataset.background *= factor.value.reshape((-1, 1, 1))
-        
+
         dataset_on_off = SpectrumDatasetOnOff.from_spectrum_dataset(
             dataset=dataset, acceptance=acceptance, acceptance_off=acceptance_off
         )
-        dataset_on_off.fake(npred_background=dataset.npred_background(), random_state=random_state)
-        
+        dataset_on_off.fake(
+            npred_background=dataset.npred_background(), random_state=random_state
+        )
+
         return dataset_on_off
 
     @staticmethod
-    def get_ts_difference(norm: float, dataset: SpectrumDatasetOnOff, significance: float = 5):
-        
+    def get_ts_difference(
+        norm: float, dataset: SpectrumDatasetOnOff, significance: float = 5
+    ):
+        # Update the spectral model normalization using our helper function
+        spectral_model = dataset.models[0]._spectral_model
+        _, _, copy_func = _get_model_normalization_info(spectral_model)
 
-        # dataset.models[0].spectral_model.amplitude.value = norm
-        if isinstance(dataset.models[0]._spectral_model, PowerLawSpectralModel):
-            dataset.models[0]._spectral_model.amplitude.value = norm
-        else:
-            dataset.models[0]._spectral_model.model1.amplitude.value = norm
-                
-        
+        # Create a new model with updated normalization and replace it
+        updated_model = copy_func(spectral_model, norm)
+
+        # Update the model properly through the Models API
+        sky_model = SkyModel(spectral_model=updated_model, name=dataset.models[0].name)
+        dataset.models = [sky_model]
+
         # TODO: Check that the inputs here are correct
         n_off = dataset.counts_off.data
         alpha = dataset.alpha.data
         n_pred = dataset.npred_signal().data
         n_on = n_pred + alpha * n_off
-        
-        # print(n_off.sum(), n_on.sum())
-        
+
         stat = WStatCountsStatistic(
-            n_on=n_on, 
-            n_off=n_off, 
+            n_on=n_on,
+            n_off=n_off,
             alpha=alpha,
         )
 
         # TODO: how to take into account edisp?
         # i.e. correlation between different bins
         total_sqrt_ts = stat.sqrt_ts.sum()
-        # print(norm, total_sqrt_ts, total_sqrt_ts - significance)
 
         # solve this equation to find normalization
         return total_sqrt_ts - significance
 
     @staticmethod
-    def estimate_integral_sensitivity(  
+    def estimate_integral_sensitivity(
         irf: str | Path,
         observatory: str,
         duration: u.Quantity,
@@ -466,7 +639,7 @@ class Sensitivity:
         offset: u.Quantity = 0 * u.deg,
         acceptance: int = 1,
         acceptance_off: int = 3,
-        random_state="random-seed"
+        random_state="random-seed",
     ):
         """Compute excess matching a given significance.
 
@@ -482,11 +655,10 @@ class Sensitivity:
         n_sig : `numpy.ndarray`
             Excess.
         """
-        
-        roots = np.array([])
-        
+
+        roots = []
+
         for _ in range(n_iter):
-        
             dataset = Sensitivity.simulate_spectrum(
                 irf=irf,
                 observatory=observatory,
@@ -503,14 +675,12 @@ class Sensitivity:
                 acceptance_off=acceptance_off,
                 random_state=random_state,
             )
-            
-            # print(dataset.counts_off.data.sum(), dataset.npred_signal().data.sum())
-            
-            if isinstance(spectral_model, CompoundSpectralModel):
-                original_norm= spectral_model.model1.amplitude.value
-            else:
-                original_norm = spectral_model.amplitude.value
-                
+
+            # Get normalization information using our helper function
+            original_norm, norm_unit, copy_func = _get_model_normalization_info(
+                spectral_model
+            )
+
             lower_bound = original_norm * lower_bound_ratio
             upper_bound = original_norm * upper_bound_ratio
 
@@ -523,36 +693,57 @@ class Sensitivity:
                 args=(dataset, significance),
                 method="secant",
             )
-            
-            roots = np.append(roots, root)
-            
-        if isinstance(spectral_model, CompoundSpectralModel):
-            spectral_model_unit = spectral_model.model1.amplitude.unit
-        else:
-            spectral_model_unit = spectral_model.amplitude.unit
-        
-        final_normalization = np.mean(roots) * spectral_model_unit
-        final_normalization_err = np.std(roots) * spectral_model_unit
-        
-        final_spectrum = spectral_model.copy() 
-        if isinstance(spectral_model, CompoundSpectralModel):
-            final_spectrum.model1.amplitude.value = final_normalization.value
-        else:
-            final_spectrum.amplitude.value = final_normalization.value
-        
+
+            # Only append if root is finite (not NaN or inf)
+            if np.isfinite(root):
+                roots.append(root)
+            else:
+                log.warning(
+                    f"Root finding failed (returned {root}) for iteration {_ + 1}/{n_iter}. "
+                    f"This may happen at high redshifts due to strong EBL absorption."
+                )
+
+        # Use the helper function to get normalization info
+        _, norm_unit, copy_func = _get_model_normalization_info(spectral_model)
+
+        # Check if we have any valid roots
+        if len(roots) == 0:
+            raise ValueError(
+                f"All {n_iter} iterations failed to find a root. "
+                f"This likely means the source is undetectable at the specified "
+                f"significance level ({significance}σ), possibly due to strong EBL absorption."
+            )
+
+        # If some iterations failed, warn but continue with the valid ones
+        if len(roots) < n_iter:
+            log.warning(
+                f"Only {len(roots)}/{n_iter} iterations succeeded. "
+                f"Using only successful iterations for sensitivity estimate."
+            )
+
+        # Convert to numpy array for easier computation
+        roots_array = np.array(roots)
+        final_normalization = np.mean(roots_array) * norm_unit
+        final_normalization_err = np.std(roots_array) * norm_unit
+
+        # Create final spectrum with updated normalization
+        final_spectrum = copy_func(spectral_model, final_normalization.value)
+
         photon_flux = final_spectrum.integral(min_energy, max_energy)
         energy_flux = final_spectrum.energy_flux(min_energy, max_energy)
-        
-        # calculate errors
-        final_spectrum_error = spectral_model.copy()
-        if isinstance(final_spectrum_error, CompoundSpectralModel):
-            final_spectrum_error.model1.amplitude.value = final_normalization.value + final_normalization_err.value
-        else:
-            final_spectrum_error.amplitude.value = final_normalization.value + final_normalization_err.value
 
-        photon_flux_error = final_spectrum_error.integral(min_energy, max_energy) - photon_flux
-        energy_flux_error = final_spectrum_error.energy_flux(min_energy, max_energy) - energy_flux
-        
+        # calculate errors
+        final_spectrum_error = copy_func(
+            spectral_model, final_normalization.value + final_normalization_err.value
+        )
+
+        photon_flux_error = (
+            final_spectrum_error.integral(min_energy, max_energy) - photon_flux
+        )
+        energy_flux_error = (
+            final_spectrum_error.energy_flux(min_energy, max_energy) - energy_flux
+        )
+
         return {
             "duration": duration,
             "normalization": final_normalization.to("erg-1 cm-2 s-1"),
@@ -562,7 +753,6 @@ class Sensitivity:
             "energy_flux": energy_flux.to("erg cm-2 s-1"),
             "energy_flux_err": energy_flux_error.to("erg cm-2 s-1"),
         }
-    
 
     @staticmethod
     def estimate_differential_sensitivity(
@@ -626,7 +816,7 @@ class Sensitivity:
         sensitivity : `~astropy.units.Quantity`
             Integral sensitivity in units of cm^-2 s^-1
         """
-        
+
         # check that IRF file exists
         irf = Path(irf)
 
@@ -717,4 +907,3 @@ class Sensitivity:
         sensitivity_table = sensitivity_estimator.run(dataset_on_off)
 
         return sensitivity_table
-        
