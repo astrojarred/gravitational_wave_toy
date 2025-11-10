@@ -148,7 +148,7 @@ class GRB:
             )
 
         def extract_index(p: Path) -> int:
-            m = re.search(r"_tobs=(\d+)_", p.name)
+            m = re.search(r"_tobs=(\d+)(?:_|\.|$)", p.name)
             return int(m.group(1)) if m else -1
 
         candidates.sort(key=extract_index)
@@ -168,8 +168,6 @@ class GRB:
         self.energy = energy
 
         # Create time array from indices (assuming indices represent time steps)
-        if time_indices[0] == 0 and time_indices[-1] == len(time_indices) - 1:
-            time_indices = np.logspace(2, 5, 20)
         self.time = u.Quantity(time_indices) * u.s
 
         # build spectra with shape (n_energy, n_time)
@@ -179,7 +177,7 @@ class GRB:
         # Set default metadata since we don't have lightcurve data
         self.eiso = 0 * u.erg  # Default Eiso
         self.fluence = 0 * u.Unit("1 / cm2")  # Default fluence
-        self.dist = None # default to None, will be set by redshift if provided
+        self.dist = None  # default to None, will be set by redshift if provided
         self.angle = 0 * u.deg
         self.long = 0 * u.rad
         self.lat = 0 * u.rad
@@ -208,7 +206,7 @@ class GRB:
             if (current_z_val is None) or (not np.isclose(z, current_z_val)):
                 # Suppress the astropy cosmology optimizer warning
                 with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore', message='.*fval is not bracketed.*')
+                    warnings.filterwarnings('ignore', message='.*fval is not bracketed.*', category=RuntimeWarning)
                     self.dist = Distance(z=z)
                 distance_changed = True
 
@@ -287,6 +285,7 @@ class GRB:
 
         if return_plot:
             return plt
+        return None
 
     def get_spectrum(
         self, time: u.Quantity, energy: u.Quantity | None = None

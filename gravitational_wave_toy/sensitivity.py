@@ -33,6 +33,7 @@ from gammapy.modeling.models import (
     TemplateSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
+from gammapy.modeling import Parameter
 from gammapy.stats import WStatCountsStatistic
 from gammapy.utils.roots import find_roots
 from regions import CircleSkyRegion
@@ -51,17 +52,12 @@ class ScaledTemplateModel(TemplateSpectralModel):
     """Scaled template spectral model for sensitivity calculations."""
 
     def __init__(self, scaling_factor: int | float = 1e-6, *args, **kwargs):
-        from gammapy.modeling import Parameter
-        
-        # Create a real amplitude parameter with log scaling (dimensionless)
+        # Create a real amplitude parameter with log scaling
         self.amplitude = Parameter(
-            "amplitude", 
-            scaling_factor, 
-            unit="1 / (TeV s cm2)",  # Dimensionless scaling factor
-            interp="log"
+            "amplitude", scaling_factor, unit="1 / (TeV s cm2)", interp="log"
         )
         self.amplitude._is_norm = True
-        
+
         self.scaling_factor = scaling_factor
         self._original_values = None  # Initialize before calling super
         super().__init__(*args, **kwargs)
@@ -89,8 +85,7 @@ class ScaledTemplateModel(TemplateSpectralModel):
 
     @values.setter
     def values(self, values: u.Quantity):
-        self._original_values = values        
-
+        self._original_values = values
 
     def evaluate(self, energy):
         """Evaluate the model with scaling applied."""
@@ -162,6 +157,8 @@ def _get_model_normalization_info(spectral_model):
 
     else:
         raise ValueError(f"Unsupported spectral model type: {type(spectral_model)}")
+
+    return None, None, None
 
 
 class Sensitivity:
@@ -315,11 +312,11 @@ class Sensitivity:
                 raise ValueError("Sensitivity curve not yet calculated for this GRB.")
             log_sensitivity = self._sensitivity(log_t)
             return 10**log_sensitivity * self._sensitivity_unit
-        elif mode == "photon_flux":
-            if not self._photon_flux:
-                raise ValueError("Photon flux curve not yet calculated for this GRB.")
-            log_photon_flux = self._photon_flux(log_t)
-            return 10**log_photon_flux * self._photon_flux_unit
+
+        if not self._photon_flux:
+            raise ValueError("Photon flux curve not yet calculated for this GRB.")
+        log_photon_flux = self._photon_flux(log_t)
+        return 10**log_photon_flux * self._photon_flux_unit
 
     def get_sensitivity_curve(
         self,
@@ -367,7 +364,7 @@ class Sensitivity:
                         amplitude=starting_amplitude,
                         reference=reference,
                     ),
-                    redshift=grb.dist.z if grb.dist != 0 else 0,
+                    redshift=grb.dist.z if grb.dist is not None else 0,
                     sensitivity_type="integral",
                     offset=offset,
                     n_bins=n_bins,
@@ -377,7 +374,7 @@ class Sensitivity:
                 s = self.get_sensitivity_from_model(
                     t=t,
                     spectral_model=grb.get_template_spectrum(t),
-                    redshift=grb.dist.z if grb.dist != 0 else 0,
+                    redshift=grb.dist.z if grb.dist is not None else 0,
                     sensitivity_type="integral",
                     offset=offset,
                     n_bins=n_bins,
@@ -387,17 +384,17 @@ class Sensitivity:
             # print(f"Time: {t}")
             # print("Sensitivity:\n", s)
             self._sensitivity_information.append(s)
-            
+
             # Check for NaN values
             energy_flux = s["energy_flux"]
             photon_flux = s["photon_flux"]
-            
+
             if not np.isfinite(energy_flux.value) or not np.isfinite(photon_flux.value):
                 log.warning(
                     f"Sensitivity calculation produced NaN/Inf at time {t}. "
                     f"This may happen at high redshifts due to strong EBL absorption."
                 )
-            
+
             sensitivity_curve.append(energy_flux)
             photon_flux_curve.append(photon_flux)
 
@@ -411,22 +408,22 @@ class Sensitivity:
         )
 
         log_times = np.log10(times.value)
-        
+
         # Filter out NaN values for interpolation
         valid_mask = np.isfinite(self._sensitivity_curve.value)
-        
+
         if not np.any(valid_mask):
             raise ValueError(
                 "All sensitivity values are NaN. The source appears to be undetectable "
                 "at the specified parameters, possibly due to strong EBL absorption."
             )
-        
+
         if not np.all(valid_mask):
             log.warning(
                 f"{np.sum(~valid_mask)}/{len(valid_mask)} sensitivity points are NaN. "
                 f"Interpolation will only use valid points."
             )
-        
+
         # Use only valid points for interpolation
         log_sensitivity_curve = np.log10(self._sensitivity_curve.value[valid_mask])
         log_photon_flux_curve = np.log10(self._photon_flux_curve.value[valid_mask])
@@ -434,10 +431,16 @@ class Sensitivity:
 
         # interpolate sensitivity curve
         self._sensitivity = scipy.interpolate.interp1d(
-            log_times_valid, log_sensitivity_curve, kind="linear", fill_value="extrapolate"
+            log_times_valid,
+            log_sensitivity_curve,
+            kind="linear",
+            fill_value="extrapolate",
         )
         self._photon_flux = scipy.interpolate.interp1d(
-            log_times_valid, log_photon_flux_curve, kind="linear", fill_value="extrapolate"
+            log_times_valid,
+            log_photon_flux_curve,
+            kind="linear",
+            fill_value="extrapolate",
         )
 
     def get_sensitivity_from_model(
@@ -582,29 +585,16 @@ class Sensitivity:
 
         # Create a new model with updated normalization and replace it
         updated_model = copy_func(spectral_model, norm)
-        
+
         # Update the model properly through the Models API
         sky_model = SkyModel(spectral_model=updated_model, name=dataset.models[0].name)
         dataset.models = [sky_model]
-        
-        # if hasattr(updated_model, "amplitude"):
-        #     print(f"    get_ts_difference: norm={norm}, updated_model.amplitude.value={updated_model.amplitude.value}")
-        # else:
-        #     print(f"    get_ts_difference: norm={norm}, updated_model.amplitude.value={updated_model.model1.amplitude.value}")
-
-        
-        # Test: Evaluate the model directly to see if it changes
-        # test_energy = 1 * u.TeV
-        # test_flux = updated_model(test_energy)
-        # print(f"    get_ts_difference: model(1 TeV)={test_flux}")
 
         # TODO: Check that the inputs here are correct
         n_off = dataset.counts_off.data
         alpha = dataset.alpha.data
         n_pred = dataset.npred_signal().data
         n_on = n_pred + alpha * n_off
-
-        # print(f"    get_ts_difference: n_off={n_off.sum()}, n_on={n_on.sum()}, n_pred={n_pred.sum()}")
 
         stat = WStatCountsStatistic(
             n_on=n_on,
@@ -615,9 +605,6 @@ class Sensitivity:
         # TODO: how to take into account edisp?
         # i.e. correlation between different bins
         total_sqrt_ts = stat.sqrt_ts.sum()
-        
-        # print(f"    get_ts_difference: total_sqrt_ts={total_sqrt_ts}, result={total_sqrt_ts - significance}")
-        # print(norm, total_sqrt_ts, total_sqrt_ts - significance)
 
         # solve this equation to find normalization
         return total_sqrt_ts - significance
@@ -678,19 +665,13 @@ class Sensitivity:
                 random_state=random_state,
             )
 
-            # print(dataset.counts_off.data.sum(), dataset.npred_signal().data.sum())
-
             # Get normalization information using our helper function
             original_norm, norm_unit, copy_func = _get_model_normalization_info(
                 spectral_model
             )
-            
-            # print(f"Iteration {_+1}/{n_iter}: original_norm={original_norm}, norm_unit={norm_unit}")
 
             lower_bound = original_norm * lower_bound_ratio
             upper_bound = original_norm * upper_bound_ratio
-            
-            # print(f"  Bounds: [{lower_bound}, {upper_bound}]")
 
             # find upper bounds for secant method as in scipy
             root, _res = find_roots(
@@ -707,7 +688,7 @@ class Sensitivity:
                 roots.append(root)
             else:
                 log.warning(
-                    f"Root finding failed (returned {root}) for iteration {_+1}/{n_iter}. "
+                    f"Root finding failed (returned {root}) for iteration {_ + 1}/{n_iter}. "
                     f"This may happen at high redshifts due to strong EBL absorption."
                 )
 
@@ -721,7 +702,7 @@ class Sensitivity:
                 f"This likely means the source is undetectable at the specified "
                 f"significance level ({significance}σ), possibly due to strong EBL absorption."
             )
-        
+
         # If some iterations failed, warn but continue with the valid ones
         if len(roots) < n_iter:
             log.warning(
@@ -733,10 +714,7 @@ class Sensitivity:
         roots_array = np.array(roots)
         final_normalization = np.mean(roots_array) * norm_unit
         final_normalization_err = np.std(roots_array) * norm_unit
-        
-        # print(f"Final roots array: {roots_array}")
-        # print(f"Final mean: {np.mean(roots_array)}, std: {np.std(roots_array)}")
-        # print(f"Final normalization: {final_normalization}")
+
         # Create final spectrum with updated normalization
         final_spectrum = copy_func(spectral_model, final_normalization.value)
 
