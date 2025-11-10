@@ -169,9 +169,6 @@ def _get_model_normalization_info(spectral_model):
     else:
         raise ValueError(f"Unsupported spectral model type: {type(spectral_model)}")
 
-    return None, None, None
-
-
 class Sensitivity:
     ALLOWED_MODES = ["sensitivity", "photon_flux"]
 
