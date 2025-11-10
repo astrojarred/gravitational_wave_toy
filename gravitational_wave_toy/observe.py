@@ -206,7 +206,11 @@ class GRB:
             if (current_z_val is None) or (not np.isclose(z, current_z_val)):
                 # Suppress the astropy cosmology optimizer warning
                 with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore', message='.*fval is not bracketed.*', category=RuntimeWarning)
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*fval is not bracketed.*",
+                        category=RuntimeWarning,
+                    )
                     self.dist = Distance(z=z)
                 distance_changed = True
 
@@ -239,10 +243,10 @@ class GRB:
 
         try:
             self.SpectralGrid = RegularGridInterpolator(
-                (np.log10(self.energy.value), np.log10(self.time.value)), 
+                (np.log10(self.energy.value), np.log10(self.time.value)),
                 self.spectra,
                 bounds_error=False,
-                fill_value=None
+                fill_value=None,
             )
         except Exception as e:
             print(f"Energy: {np.log10(self.energy.value)}")

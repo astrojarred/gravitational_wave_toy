@@ -24,6 +24,7 @@ from gammapy.makers import (
     WobbleRegionsFinder,
 )
 from gammapy.maps import MapAxis, RegionGeom
+from gammapy.modeling import Parameter
 from gammapy.modeling.models import (
     CompoundSpectralModel,
     EBLAbsorptionNormSpectralModel,
@@ -33,7 +34,6 @@ from gammapy.modeling.models import (
     TemplateSpectralModel,
 )
 from gammapy.modeling.models.spectral import EBL_DATA_BUILTIN
-from gammapy.modeling import Parameter
 from gammapy.stats import WStatCountsStatistic
 from gammapy.utils.roots import find_roots
 from regions import CircleSkyRegion
