@@ -289,8 +289,6 @@ class GRB:
 
         if return_plot:
             return plt
-        return None
-
     def get_spectrum(
         self, time: u.Quantity, energy: u.Quantity | None = None
     ) -> float | np.ndarray:
