@@ -1,0 +1,7 @@
+Parameter,Value,Units
+event_id,42.0,
+Longitude,0.0,rad
+Latitude,1.0,rad
+EISO,2e+50,erg
+Distance,100000.0,kpc
+Angle,5.0,deg
