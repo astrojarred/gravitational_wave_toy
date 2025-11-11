@@ -8,6 +8,7 @@ from typing import Literal
 import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from astropy.coordinates import Distance
 from astropy.io import fits
 from gammapy.modeling.models import (
@@ -89,6 +90,9 @@ class GRB:
             if name_lower.endswith((".fits", ".fit", ".fits.gz", ".fit.gz")):
                 self.file_type = "fits"
                 self.read_fits()
+            elif name_lower.endswith(".csv"):
+                self.file_type = "csv"
+                self.read_csv()
             elif name_lower.endswith(".txt"):
                 self.file_type = "txt"
                 self.read_txt()
@@ -193,6 +197,142 @@ class GRB:
         self.long = 0 * u.rad
         self.lat = 0 * u.rad
 
+        if not isinstance(self.min_energy, u.Quantity):
+            self.min_energy = self.energy.min()
+        if not isinstance(self.max_energy, u.Quantity):
+            self.max_energy = self.energy.max()
+            
+    def read_csv(self) -> None:
+        # expect a single CSV file with columns: time [s], energy [GeV], flux [cm-2 s-1 GeV-1]
+        # and optionally a metadata file named {base}_metadata.txt in the same directory
+        
+        csv_path = self.filepath
+        
+        # Read CSV data
+        df = pd.read_csv(csv_path)
+        
+        # Extract columns (handle both with and without brackets in column names)
+        # Uses substring matching for flexibility (e.g., "time [s]", "timestamp", "energy [GeV]", etc.)
+        time_col = None
+        energy_col = None
+        flux_col = None
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'time' in col_lower:
+                time_col = col
+            elif 'energy' in col_lower:
+                energy_col = col
+            elif 'flux' in col_lower:
+                flux_col = col
+        
+        if time_col is None or energy_col is None or flux_col is None:
+            missing = []
+            if time_col is None:
+                missing.append("time")
+            if energy_col is None:
+                missing.append("energy")
+            if flux_col is None:
+                missing.append("flux")
+            raise ValueError(
+                f"CSV file must contain columns for time, energy, and flux. "
+                f"Missing columns: {', '.join(missing)}. "
+                f"Found columns: {list(df.columns)}. "
+                f"Expected column names should contain 'time', 'energy', and 'flux' (case-insensitive)."
+            )
+        
+        time_values = df[time_col].values * u.s
+        energy_values = df[energy_col].values * u.GeV
+        
+        # Get unique sorted values
+        unique_times = np.unique(time_values.value)
+        unique_energies = np.unique(energy_values.value)
+        
+        # Reshape flux array to (n_energy, n_time)
+        # Data is structured as: for each time, all energies are listed
+        n_time = len(unique_times)
+        n_energy = len(unique_energies)
+        
+        # Verify data structure
+        if len(df) != n_time * n_energy:
+            raise ValueError(
+                f"Data length ({len(df)}) does not match expected "
+                f"n_time * n_energy ({n_time} * {n_energy} = {n_time * n_energy})"
+            )
+        
+        # Sort data by time first, then by energy to ensure correct ordering
+        df_sorted = df.sort_values(by=[time_col, energy_col])
+        flux_sorted = df_sorted[flux_col].values * u.Unit("1 / (cm2 s GeV)")
+        
+        # Reshape flux values: (n_time, n_energy) then transpose to (n_energy, n_time)
+        spectra_reshaped = flux_sorted.value.reshape(n_time, n_energy).T
+        self.spectra = spectra_reshaped * u.Unit("1 / (cm2 s GeV)")
+        
+        self.time = unique_times * u.s
+        self.energy = unique_energies * u.GeV
+        
+        # Read metadata file if it exists
+        metadata_path = csv_path.parent / f"{csv_path.stem}_metadata.txt"
+        
+        # Default values
+        self.eiso = 0 * u.erg
+        self.fluence = 0 * u.Unit("1 / cm2")
+        self.dist = None
+        self.angle = 0 * u.deg
+        self.long = 0 * u.rad
+        self.lat = 0 * u.rad
+        
+        if metadata_path.exists():
+            try:
+                metadata_df = pd.read_csv(metadata_path)
+                
+                metadata_dict = {}
+                if 'Parameter' in metadata_df.columns and 'Value' in metadata_df.columns:
+                    for _, row in metadata_df.iterrows():
+                        # Convert to string and strip, handling NaN/float cases
+                        param = str(row['Parameter']).strip() if pd.notna(row['Parameter']) else ''
+                        value = row['Value']
+                        
+                        # Handle Units column - convert to string, handle NaN/empty
+                        if 'Units' in metadata_df.columns:
+                            unit_val = row['Units']
+                            if pd.notna(unit_val):
+                                unit_str = str(unit_val).strip()
+                            else:
+                                unit_str = ''
+                        else:
+                            unit_str = ''
+                        
+                        if pd.notna(value) and param:
+                            metadata_dict[param.lower()] = {
+                                'value': value,
+                                'unit': unit_str
+                            }
+                
+                # Parse metadata with defaults using a mapping dictionary
+                # Format: 'metadata_key': ('attribute_name', 'default_unit', 'parser_func')
+                metadata_mapping = {
+                    'event_id': ('id', None, lambda v, unit_str: int(float(v))),
+                    'longitude': ('long', 'rad', lambda v, unit_str: float(v) * u.Unit(unit_str or 'rad')),
+                    'latitude': ('lat', 'rad', lambda v, unit_str: float(v) * u.Unit(unit_str or 'rad')),
+                    'eiso': ('eiso', 'erg', lambda v, unit_str: float(v) * u.Unit(unit_str or 'erg')),
+                    'distance': ('dist', 'kpc', lambda v, unit_str: Distance(float(v), unit=unit_str or 'kpc')),
+                    'angle': ('angle', 'deg', lambda v, unit_str: float(v) * u.Unit(unit_str or 'deg')),
+                }
+                
+                for metadata_key, (attr_name, default_unit, parser_func) in metadata_mapping.items():
+                    if metadata_key in metadata_dict:
+                        try:
+                            value = metadata_dict[metadata_key]['value']
+                            unit = metadata_dict[metadata_key]['unit'] or default_unit
+                            setattr(self, attr_name, parser_func(value, unit))
+                        except (ValueError, TypeError, u.UnitConversionError):
+                            pass  # Keep default value
+                        
+            except Exception as e:
+                log.warning(f"Could not parse metadata file {metadata_path}: {type(e).__name__} {e}. Using defaults.")
+        
+        # Set energy limits if not already set
         if not isinstance(self.min_energy, u.Quantity):
             self.min_energy = self.energy.min()
         if not isinstance(self.max_energy, u.Quantity):
