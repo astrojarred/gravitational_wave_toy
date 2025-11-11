@@ -113,6 +113,17 @@ class GRB:
 
     def __repr__(self):
         return f"<GRB(id={self.id})>"
+    
+    @property
+    def metadata(self) -> dict:
+        return {
+            "id": self.id,
+            "long": self.long,
+            "lat": self.lat,
+            "eiso": self.eiso,
+            "dist": self.dist,
+            "angle": self.angle,
+        }
 
     def read_fits(self) -> None:
         with fits.open(self.filepath) as hdu_list:
