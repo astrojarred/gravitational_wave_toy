@@ -11,7 +11,8 @@
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
 [![GitHub Issues](https://img.shields.io/github/issues/astrojarred/gravitational_wave_toy.svg)](https://github.com/astrojarred/gravitational_wave_toy/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/astrojarred/gravitational_wave_toy.svg)](https://github.com/astrojarred/gravitational_wave_toy/pulls)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
+![GitHub License](https://img.shields.io/github/license/astrojarred/gravitational_wave_toy)
+
 
 </div>
 
@@ -279,3 +280,4 @@ Other important options to `gws.plot` include:
 
 ---
 Logo credit: [smalllikeart](https://www.flaticon.com/authors/smalllikeart)
+
