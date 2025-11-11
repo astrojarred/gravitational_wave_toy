@@ -65,6 +65,15 @@ class GRB:
                 self.id = int(self.filepath.stem.split("_")[1])
         except (ValueError, IndexError):
             self.id = 0
+            
+        # initialize metadata
+        self.eiso = None
+        self.fluence = None
+        self.dist = None
+        self.angle = None
+        self.long = None
+        self.lat = None
+        self.fluence = None
 
         # choose reader based on file extension or directory contents
         if self.filepath.is_dir():
@@ -120,22 +129,48 @@ class GRB:
     
     @property
     def metadata(self) -> dict:
+        """Return a dictionary of the GRB metadata.
+
+        Returns:
+            dict: A dictionary of the GRB metadata which includes the event id, longitude, latitude, eiso, distance, and jet opening angle.
+        """
         return {
             "id": self.id,
-            "long": self.long,
-            "lat": self.lat,
+            "longitude": self.long,
+            "latitude": self.lat,
             "eiso": self.eiso,
-            "dist": self.dist,
+            "distance": self.dist,
             "angle": self.angle,
+            "fluence": self.fluence,
         }
 
     def read_fits(self) -> None:
         with fits.open(self.filepath) as hdu_list:
-            self.long = hdu_list[0].header["LONG"] * u.Unit("rad")
-            self.lat = hdu_list[0].header["LAT"] * u.Unit("rad")
-            self.eiso = hdu_list[0].header["EISO"] * u.Unit("erg")
-            self.dist = Distance(hdu_list[0].header["DISTANCE"], unit="kpc")
-            self.angle = hdu_list[0].header["ANGLE"] * u.Unit("deg")
+            # Try/catch each header field; set to default if missing
+            try:
+                self.long = hdu_list[0].header["LONG"] * u.Unit("rad")
+            except KeyError:
+                log.info("Longitude (LONG) not found in FITS header")
+            try:
+                self.lat = hdu_list[0].header["LAT"] * u.Unit("rad")
+            except KeyError:
+                log.info("Latitude (LAT) not found in FITS header")
+            try:
+                self.eiso = hdu_list[0].header["EISO"] * u.Unit("erg")
+            except KeyError:
+                log.info("Isotropic equivalent energy of prompt emission (EISO) not found in FITS header")
+            try:
+                self.dist = Distance(hdu_list[0].header["DISTANCE"], unit="kpc")
+            except KeyError:
+                log.info("Distance (DISTANCE) not found in FITS header")
+            try:
+                self.angle = hdu_list[0].header["ANGLE"] * u.Unit("deg")
+            except KeyError:
+                log.info("Viewing angle (ANGLE) not found in FITS header")
+            try:
+                self.fluence = hdu_list[0].header["FLUENCE"] * u.Unit("1 / cm2")
+            except KeyError:
+                log.info("Fluence (FLUENCE) not found in FITS header")
 
             datalc = hdu_list[3].data
             datatime = hdu_list[2].data
@@ -189,22 +224,60 @@ class GRB:
         spectra_stack = u.Quantity(spectra_columns)  # (n_time, n_energy)
         self.spectra = spectra_stack.T  # (n_energy, n_time)
 
-        # Set default metadata since we don't have lightcurve data
-        self.eiso = 0 * u.erg  # Default Eiso
-        self.fluence = 0 * u.Unit("1 / cm2")  # Default fluence
-        self.dist = None  # default to None, will be set by redshift if provided
-        self.angle = 0 * u.deg
-        self.long = 0 * u.rad
-        self.lat = 0 * u.rad
-
         if not isinstance(self.min_energy, u.Quantity):
             self.min_energy = self.energy.min()
         if not isinstance(self.max_energy, u.Quantity):
             self.max_energy = self.energy.max()
             
     def read_csv(self) -> None:
-        # expect a single CSV file with columns: time [s], energy [GeV], flux [cm-2 s-1 GeV-1]
-        # and optionally a metadata file named {base}_metadata.txt in the same directory
+        """
+        Read GRB spectral data from a CSV file and optional metadata file.
+
+        Expected CSV format:
+            - Columns: 'time', 'energy', 'flux' (case-insensitive, substring matching allowed).
+                - 'time': Time in seconds (s).
+                - 'energy': Energy in giga-electronvolts (GeV).
+                - 'flux': Differential flux in units of cm⁻² s⁻¹ GeV⁻¹.
+            - Each row represents a single (time, energy, flux) measurement.
+            - The file may use column names with or without units, e.g., "time [s]", "energy [GeV]", "flux [cm-2 s-1 GeV-1]".
+
+        Data structure requirements:
+            - The method builds a time-energy grid from the CSV, with arrays:
+                - self.time: 1D array of time values (astropy Quantity, units of seconds).
+                - self.energy: 1D array of energy values (astropy Quantity, units of GeV).
+                - self.spectra: 2D array of flux values (shape: [n_energy, n_time], units of cm⁻² s⁻¹ GeV⁻¹).
+            - The CSV may contain repeated time or energy values; the method will organize the data into a grid.
+
+        Optional metadata file:
+            - If a file named '{base}_metadata.csv' exists in the same directory, it will be read for additional parameters.
+            - Expected format: CSV file with columns 'parameter', 'value', and 'units', e.g.:
+                parameter,value,units
+                id,42.0,
+                longitude,0.0,rad
+                latitude,1.0,rad
+                eiso,2e+50,erg
+                distance,100000.0,kpc
+                angle,5.0,deg
+                fluence,2.3e-5,1 / cm2
+            - Suggested units for metadata fields:
+                - id: int
+                - longitude: rad
+                - latitude: rad
+                - eiso: erg
+                - distance: kpc
+                - angle: deg
+                - fluence: 1 / cm2
+            - If any metadata field is missing, default (dummy) values are kept as None.
+
+        Attributes set by this method:
+            - self.time, self.energy, self.spectra
+            - self.id, self.long, self.lat, self.eiso, self.dist, self.angle, self.fluence
+            - self.min_energy, self.max_energy (if not already set)
+
+        Raises:
+            - FileNotFoundError: If the CSV file does not exist.
+            - ValueError: If required columns are missing or data cannot be parsed.
+        """
         
         csv_path = self.filepath
         
@@ -217,14 +290,31 @@ class GRB:
         energy_col = None
         flux_col = None
         
-        for col in df.columns:
-            col_lower = col.lower()
-            if 'time' in col_lower:
-                time_col = col
-            elif 'energy' in col_lower:
-                energy_col = col
-            elif 'flux' in col_lower:
-                flux_col = col
+        # Improved column matching logic: Try exact match first, then fall back to substring match (case-insensitive).
+        # This avoids accidental matches like "time_energy" for "time".
+        lower_cols = {col.lower(): col for col in df.columns}
+        time_col = energy_col = flux_col = None
+
+        # Try to match exactly (ignoring case and possible brackets/units)
+        def find_exact_or_substring(names, options):
+            # Try exact match first
+            for opt in options:
+                for name in names:
+                    if name.lower().strip() == opt.lower():
+                        return names[name]
+            # Then substring match
+            for opt in options:
+                for name in names:
+                    if opt.lower() in name.lower():
+                        return names[name]
+            return None
+
+        # Common variants (possibly with units)
+        time_col = find_exact_or_substring(lower_cols, ['time', 'time [s]'])
+        energy_col = find_exact_or_substring(lower_cols, ['energy', 'energy [gev]'])
+        flux_col = find_exact_or_substring(lower_cols, ['flux', 'flux [cm-2 s-1 gev-1]', 'dNdE', 'dNdE [cm-2 s-1 gev-1]'])
+
+        # Documented: If multiple columns match by substring, the first match in column order is used.
         
         if time_col is None or energy_col is None or flux_col is None:
             missing = []
@@ -272,52 +362,44 @@ class GRB:
         self.energy = unique_energies * u.GeV
         
         # Read metadata file if it exists
-        metadata_path = csv_path.parent / f"{csv_path.stem}_metadata.txt"
-        
-        # Default values
-        self.eiso = 0 * u.erg
-        self.fluence = 0 * u.Unit("1 / cm2")
-        self.dist = None
-        self.angle = 0 * u.deg
-        self.long = 0 * u.rad
-        self.lat = 0 * u.rad
+        metadata_path = csv_path.parent / f"{csv_path.stem}_metadata.csv"
         
         if metadata_path.exists():
             try:
                 metadata_df = pd.read_csv(metadata_path)
                 
                 metadata_dict = {}
-                if 'Parameter' in metadata_df.columns and 'Value' in metadata_df.columns:
-                    for _, row in metadata_df.iterrows():
-                        # Convert to string and strip, handling NaN/float cases
-                        param = str(row['Parameter']).strip() if pd.notna(row['Parameter']) else ''
-                        value = row['Value']
+                if 'parameter' in metadata_df.columns and 'value' in metadata_df.columns:
+                    for row in metadata_df.itertuples(index=False):  
+                        # Convert to string and strip, handling NaN/float cases  
+                        param = str(row.parameter).strip() if pd.notna(row.parameter) else ''  
+                        value = row.value  
                         
-                        # Handle Units column - convert to string, handle NaN/empty
-                        if 'Units' in metadata_df.columns:
-                            unit_val = row['Units']
-                            if pd.notna(unit_val):
-                                unit_str = str(unit_val).strip()
-                            else:
-                                unit_str = ''
+                        # Handle Units column - convert to string, handle NaN/empty  
+                        if 'units' in metadata_df.columns:  
+                            unit_val = row.units  
+                        
+                        if pd.notna(unit_val):
+                            unit_str = str(unit_val).strip()
                         else:
                             unit_str = ''
-                        
+                            
                         if pd.notna(value) and param:
-                            metadata_dict[param.lower()] = {
+                            metadata_dict[param] = {
                                 'value': value,
                                 'unit': unit_str
                             }
-                
+                            
                 # Parse metadata with defaults using a mapping dictionary
                 # Format: 'metadata_key': ('attribute_name', 'default_unit', 'parser_func')
-                metadata_mapping = {
-                    'event_id': ('id', None, lambda v, unit_str: int(float(v))),
+                metadata_mapping = {  
+                    'id': ('id', None, lambda v, unit_str: int(float(v))),
                     'longitude': ('long', 'rad', lambda v, unit_str: float(v) * u.Unit(unit_str or 'rad')),
                     'latitude': ('lat', 'rad', lambda v, unit_str: float(v) * u.Unit(unit_str or 'rad')),
                     'eiso': ('eiso', 'erg', lambda v, unit_str: float(v) * u.Unit(unit_str or 'erg')),
                     'distance': ('dist', 'kpc', lambda v, unit_str: Distance(float(v), unit=unit_str or 'kpc')),
                     'angle': ('angle', 'deg', lambda v, unit_str: float(v) * u.Unit(unit_str or 'deg')),
+                    'fluence': ('fluence', '1 / cm2', lambda v, unit_str: float(v) * u.Unit(unit_str or '1 / cm2')),
                 }
                 
                 for metadata_key, (attr_name, default_unit, parser_func) in metadata_mapping.items():
@@ -326,11 +408,15 @@ class GRB:
                             value = metadata_dict[metadata_key]['value']
                             unit = metadata_dict[metadata_key]['unit'] or default_unit
                             setattr(self, attr_name, parser_func(value, unit))
-                        except (ValueError, TypeError, u.UnitConversionError):
-                            pass  # Keep default value
+                        except (ValueError, TypeError, u.UnitConversionError) as field_exc:  
+                            log.warning(  
+                                f"Could not parse metadata field '{metadata_key}' (value={value}, unit={unit}) in {metadata_path}: {type(field_exc).__name__} {field_exc}. Using default value for '{attr_name}'."  
+                            )
                         
             except Exception as e:
                 log.warning(f"Could not parse metadata file {metadata_path}: {type(e).__name__} {e}. Using defaults.")
+        else:
+            log.warning(f"No metadata file found at {metadata_path}")
         
         # Set energy limits if not already set
         if not isinstance(self.min_energy, u.Quantity):
