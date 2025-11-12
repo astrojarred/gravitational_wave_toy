@@ -1,4 +1,3 @@
-# Tools to ease followup with tilepy
 import warnings
 from pathlib import Path
 from typing import Literal
@@ -8,7 +7,7 @@ from astropy import units as u
 from numpy import log10
 from scipy.interpolate import interp1d
 
-from . import observe, sensitivity
+from . import sensitivity, source
 
 
 def get_row(
@@ -21,7 +20,30 @@ def get_row(
     duration: int = 1800,
     event_id_column: str = "coinc_event_id",
 ):
-    # find row with these values
+    """Retrieve a sensitivity row from the dataframe matching the specified criteria.
+
+    Searches the sensitivity dataframe for a row that matches all of the provided
+    parameters. If multiple rows match, returns the first one. Raises an error if
+    no matching row is found.
+
+    Args:
+        sens_df: DataFrame containing sensitivity data with columns for event ID,
+            site, zenith angle, EBL flag, configuration, and duration.
+        event_id: The event identifier to search for.
+        site: Observatory site name (e.g., "north" or "south").
+        zenith: Zenith angle in degrees for the observation.
+        ebl: Whether EBL absorption is applied. Defaults to False.
+        config: IRF configuration name. Defaults to "alpha".
+        duration: Observation duration in seconds. Defaults to 1800.
+        event_id_column: Name of the column containing event IDs. Defaults to
+            "coinc_event_id".
+
+    Returns:
+        pandas.Series: The first matching row from the dataframe.
+
+    Raises:
+        ValueError: If no row matches all the specified criteria.
+    """
     rows = sens_df[
         (sens_df[event_id_column] == event_id)
         & (sens_df["irf_site"] == site)
@@ -46,10 +68,42 @@ def extrapolate_obs_time(
     event_id: int,
     delay: u.Quantity,
     extrapolation_df: pd.DataFrame,
-    filters: dict[str, str] = {},
+    filters: dict[str, str | float | int] = {},
     other_info: list[str] = [],
     event_id_column: str = "coinc_event_id",
 ):
+    """Estimate the required observation time for a given delay using interpolation.
+
+    Uses logarithmic interpolation to estimate the observation time needed to detect
+    an event at a specific delay time. The function looks up pre-computed observation
+    times from the extrapolation dataframe and interpolates between them. If the delay
+    exceeds the maximum value in the dataframe, a warning is issued and the value is
+    extrapolated beyond the data range.
+
+    Args:
+        event_id: The event identifier to look up.
+        delay: Time delay from the event trigger, as an astropy Quantity with time units.
+        extrapolation_df: DataFrame containing pre-computed observation times at various
+            delays. Must contain columns for event ID, observation delay, and observation
+            time, along with any filter columns.
+        filters: Dictionary of additional column-value pairs to filter the dataframe.
+            Keys should be column names, values should be the values to match.
+        other_info: List of column names to include in the returned dictionary.
+            These are extracted from the first matching row.
+        event_id_column: Name of the column containing event IDs. Defaults to
+            "coinc_event_id".
+
+    Returns:
+        dict: Dictionary containing:
+            - "obs_time": Estimated observation time in seconds, or -1 if the event
+                is not detectable or extrapolation fails.
+            - "error_message": Empty string if successful, otherwise an error description.
+            - Additional keys from other_info if provided.
+
+    Raises:
+        ValueError: If the requested delay is below the minimum delay available in
+            the dataframe for this event.
+    """
     res = {}
     delay = delay.to("s").value
     event_info = extrapolation_df[extrapolation_df[event_id_column] == event_id]
@@ -108,8 +162,8 @@ def get_sensitivity(
     site: str,
     zenith: int,
     sens_df: pd.DataFrame | None = None,
-    sensitivity_curve: list | None = None,
-    photon_flux_curve: list | None = None,
+    sensitivity_curve: list[float] | None = None,
+    photon_flux_curve: list[float] | None = None,
     ebl: bool = False,
     config: str = "alpha",
     duration: int = 1800,
@@ -118,7 +172,39 @@ def get_sensitivity(
     max_energy: u.Quantity = 10 * u.TeV,
     event_id_column: str = "coinc_event_id",
 ):
-    # Enforce sens_df OR sensitivity_curve and photon_flux_curve
+    """Create a Sensitivity object for a given event and observation configuration.
+
+    Constructs a Sensitivity instance either by looking up pre-computed sensitivity
+    curves from a dataframe or by using directly provided sensitivity and photon flux
+    curves. The sensitivity object is configured for the specified CTA observatory
+    site, energy range, and observation region.
+
+    Args:
+        event_id: The event identifier. Only used when sens_df is provided.
+        site: Observatory site name (e.g., "north" or "south").
+        zenith: Zenith angle in degrees for the observation.
+        sens_df: Optional DataFrame containing pre-computed sensitivity data. If provided,
+            sensitivity_curve and photon_flux_curve must be None.
+        sensitivity_curve: Optional list of sensitivity values in erg cm⁻² s⁻¹. Must be
+            provided along with photon_flux_curve if sens_df is None.
+        photon_flux_curve: Optional list of photon flux values in cm⁻² s⁻¹. Must be
+            provided along with sensitivity_curve if sens_df is None.
+        ebl: Whether EBL absorption is applied. Defaults to False.
+        config: IRF configuration name. Defaults to "alpha".
+        duration: Observation duration in seconds. Defaults to 1800.
+        radius: Angular radius of the observation region. Defaults to 3.0 degrees.
+        min_energy: Minimum energy for the sensitivity calculation. Defaults to 0.02 TeV.
+        max_energy: Maximum energy for the sensitivity calculation. Defaults to 10 TeV.
+        event_id_column: Name of the column containing event IDs in sens_df. Defaults to
+            "coinc_event_id".
+
+    Returns:
+        Sensitivity: A configured Sensitivity object ready for use in exposure calculations.
+
+    Raises:
+        ValueError: If both sens_df and curves are provided, or if neither sens_df nor
+            both curves are provided, or if sensitivity_curve is not a list or Quantity.
+    """
     if sens_df is not None:
         if sensitivity_curve is not None or photon_flux_curve is not None:
             raise ValueError(
@@ -145,7 +231,12 @@ def get_sensitivity(
         sensitivity_curve = row["sensitivity_curve"]
         photon_flux_curve = row["photon_flux_curve"]
 
-    n_sensitivity_points = len(sensitivity_curve)
+    if isinstance(sensitivity_curve, (list, u.Quantity)):
+        n_sensitivity_points = len(sensitivity_curve)
+    else:
+        raise ValueError(
+            f"sensitivity_curve must be a list or u.Quantity, got {type(sensitivity_curve)}"
+        )
 
     sens = sensitivity.Sensitivity(
         observatory=f"cta_{site}",
@@ -183,7 +274,70 @@ def get_exposure(
     sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     n_time_steps: int = 10,
 ):
-    # check delay units
+    """Calculate exposure information for observing an event with a spectrum evolving in time.
+
+    Determines the required observation time and other exposure parameters for detecting
+    an event at a given delay. This function supports two modes of operation:
+
+    1. **Extrapolation mode**: If extrapolation_df is provided, uses pre-computed
+       observation times from simulations to quickly estimate the exposure time via
+       interpolation. This is faster but requires pre-existing simulation data.
+
+    2. **Direct calculation mode**: If grb_filepath is provided, loads the source
+       spectrum and performs a full observation calculation using the Source.observe()
+       method. This is more accurate but computationally intensive.
+
+    Args:
+        event_id: The event identifier.
+        delay: Time delay from the event trigger, as an astropy Quantity with time units.
+        site: Observatory site name (e.g., "north" or "south").
+        zenith: Zenith angle in degrees for the observation.
+        grb_filepath: Path to the GRB source file. Required if extrapolation_df is None.
+        sens_df: Optional DataFrame containing pre-computed sensitivity data.
+        event_id_column: Name of the column containing event IDs. Defaults to
+            "coinc_event_id".
+        sensitivity_curve: Optional list of sensitivity values. Must be provided with
+            photon_flux_curve if sens_df is None.
+        photon_flux_curve: Optional list of photon flux values. Must be provided with
+            sensitivity_curve if sens_df is None.
+        extrapolation_df: Optional DataFrame or path to parquet file containing
+            pre-computed observation times. If provided, uses interpolation mode.
+        ebl: Optional EBL model name to apply for absorption. If None, no EBL is applied.
+        redshift: Optional redshift value. If provided, overrides the redshift from
+            the source file for EBL calculations.
+        config: IRF configuration name. Defaults to "alpha".
+        duration: Observation duration in seconds for sensitivity lookup. Defaults to 1800.
+        radius: Angular radius of the observation region. Defaults to 3.0 degrees.
+        min_energy: Minimum energy for the calculation. Defaults to 0.02 TeV.
+        max_energy: Maximum energy for the calculation. Defaults to 10 TeV.
+        target_precision: Precision for rounding observation times. Defaults to 1 second.
+        max_time: Maximum allowed observation time. Defaults to 12 hours.
+        sensitivity_mode: Whether to use "sensitivity" or "photon_flux" for detection
+            calculations. Defaults to "sensitivity".
+        n_time_steps: Number of time steps for the observation calculation. Defaults to 10.
+
+    Returns:
+        dict: Dictionary containing exposure information. In extrapolation mode, includes:
+            - "obs_time": Observation time in seconds (or -1 if not detectable)
+            - "start_time": Start time of observation
+            - "end_time": End time of observation (or -1 if not detectable)
+            - "seen": Boolean indicating if the event is detectable
+            - "id": Event identifier
+            - "long", "lat": Source coordinates in radians
+            - "eiso": Isotropic equivalent energy in erg
+            - "dist": Distance in kpc
+            - "angle": Viewing angle in degrees
+            - "ebl_model": EBL model name used
+            - "min_energy", "max_energy": Energy range
+            - "error_message": Error description if applicable
+
+        In direct calculation mode, returns the result from Source.observe().
+
+    Raises:
+        ValueError: If unit types are incorrect, if extrapolation_df is None and
+            grb_filepath is not provided, or if delay is below the minimum in the
+            extrapolation dataframe.
+    """
     if delay.unit.physical_type != "time":
         raise ValueError(f"delay must be a time quantity, got {delay}")
     if min_energy.unit.physical_type != "energy":
@@ -273,7 +427,7 @@ def get_exposure(
         event_id_column=event_id_column,
     )
 
-    grb = observe.GRB(grb_filepath, min_energy, max_energy, ebl=ebl)
+    grb = source.Source(grb_filepath, min_energy, max_energy, ebl=ebl)
 
     if redshift is not None:
         grb.set_ebl_model(ebl, z=redshift)
