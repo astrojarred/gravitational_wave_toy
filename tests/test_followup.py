@@ -149,7 +149,6 @@ def test_get_sensitivity_from_sens_df(sample_sensitivity_df):
 
 def test_get_sensitivity_from_curves():
     """Test get_sensitivity using sensitivity_curve and photon_flux_curve."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
     
@@ -170,7 +169,6 @@ def test_get_sensitivity_from_curves():
 
 def test_get_sensitivity_conflicting_inputs(sample_sensitivity_df):
     """Test get_sensitivity raises error when both sens_df and curves are provided."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     
     with pytest.raises(ValueError, match="If sens_df is provided"):

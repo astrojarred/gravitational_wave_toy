@@ -78,7 +78,6 @@ def test_scaled_template_model_evaluate():
 
 def test_sensitivity_initialization_with_curves():
     """Test Sensitivity initialization with sensitivity and photon flux curves."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
@@ -115,7 +114,6 @@ def test_sensitivity_initialization_missing_curves():
 
 def test_sensitivity_initialization_invalid_energy():
     """Test that error is raised for invalid energy units."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
@@ -133,7 +131,6 @@ def test_sensitivity_initialization_invalid_energy():
 
 def test_sensitivity_get_sensitivity_mode():
     """Test Sensitivity.get method in sensitivity mode."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
@@ -156,7 +153,6 @@ def test_sensitivity_get_sensitivity_mode():
 
 def test_sensitivity_get_photon_flux_mode():
     """Test Sensitivity.get method in photon_flux mode."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
@@ -179,7 +175,6 @@ def test_sensitivity_get_photon_flux_mode():
 
 def test_sensitivity_get_invalid_mode():
     """Test that error is raised for invalid mode."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
@@ -199,7 +194,6 @@ def test_sensitivity_get_invalid_mode():
 
 def test_sensitivity_get_invalid_time():
     """Test that error is raised for invalid time unit."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
@@ -219,7 +213,6 @@ def test_sensitivity_get_invalid_time():
 
 def test_sensitivity_get_numeric_time():
     """Test that numeric time is converted to Quantity."""
-    times = np.logspace(1, 4, 10) * u.s
     sensitivity_curve = np.logspace(-10, -12, 10) * u.Unit("erg cm-2 s-1")
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
