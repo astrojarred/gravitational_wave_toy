@@ -327,7 +327,7 @@ class GWData:
             _, ax = plt.subplots(figsize=(9, 9))
 
         # Set the colorbar options.
-        cbar_kws = {"label": "Percentage of GRBs detected", "orientation": "vertical"}
+        cbar_kws = {"label": "Percentage of sources detected", "orientation": "vertical"}
 
         # Set the color scale if logarithmic scale is selected.
         if color_scale == "log":
