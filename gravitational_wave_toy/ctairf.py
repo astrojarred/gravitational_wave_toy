@@ -44,7 +44,7 @@ class Version(Enum):
 
 class IRF(BaseModel):
     """
-    Represents the Instrument Response Function (IRF) for the CTA (Cherenkov Telescope Array).
+    A helper class which encapsulates the Instrument Response Function (IRF) for the CTA (Cherenkov Telescope Array).
 
     Attributes:
         base_directory (Optional[Path]): The base directory for the IRF files.
@@ -165,6 +165,18 @@ class IRF(BaseModel):
 
 
 class IRFHouse(BaseModel):
+    """
+    A helper class which can load multiple different supported CTAO IRFs.
+
+    Attributes:
+        base_directory (Path): The base directory for the IRF files.
+        check_irfs (bool): Whether to check the IRFs.
+
+    Methods:
+        validate_base_directory(cls, base_directory): Validates the base directory path.
+        validate_check_irfs(self): Validates the check_irfs attribute.
+        check_all_paths(self): Checks all the IRFs in the IRF house.
+    """
     base_directory: Path
     check_irfs: bool = True
 
@@ -185,6 +197,7 @@ class IRFHouse(BaseModel):
         if self.check_irfs:
             self.check_all_paths()
         return self
+
 
     # ALPHA SOUTH           =         14 MST  37 SST
     # ALPHA SOUTH MODIFIED  =  4 LST  14 MST  40 SST
