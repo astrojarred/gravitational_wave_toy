@@ -391,17 +391,15 @@ class GWData:
             for z in zeniths[1:]:
                 zenith += f"/z{z}"
 
-        if not title:
-            pass
-        elif subtitle:
+        if subtitle:
             ax.set_title(
-                f"GRB Detectability for {site}, {zenith}: {subtitle} (n={self._results.groupby('delay').total.first().iloc[0]})"
+                f"Source Detectability for {site}, {zenith}: {subtitle} (n={self._results.groupby('delay').total.first().iloc[0]})"
             )
         elif title:
             ax.set_title(title)
         else:
             ax.set_title(
-                f"GRB Detectability for {site}, {zenith} (n={self._results.groupby('delay').total.first().iloc[0]})"
+                f"Source Detectability for {site}, {zenith} (n={self._results.groupby('delay').total.first().iloc[0]})"
             )
 
         # Set the tick positions and labels for the x and y axes.
