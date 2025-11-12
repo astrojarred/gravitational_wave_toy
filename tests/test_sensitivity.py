@@ -240,7 +240,6 @@ def test_sensitivity_get_numeric_time():
 
 def test_sensitivity_get_missing_curve():
     """Test that error is raised when trying to get sensitivity without curve."""
-    times = np.logspace(1, 4, 10) * u.s
     photon_flux_curve = np.logspace(-9, -11, 10) * u.Unit("cm-2 s-1")
 
     # Create Sensitivity with only photon_flux_curve, not sensitivity_curve
