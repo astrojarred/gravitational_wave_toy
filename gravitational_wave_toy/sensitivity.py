@@ -206,8 +206,8 @@ class Sensitivity:
                     "You can copy EBL data from here: https://github.com/astrojarred/gravitational_wave_toy/tree/main/data"
                 )
 
-        if not irf and sensitivity_curve is None:
-            raise ValueError("Must provide either irf or sensitivity_curve")
+        if not irf and (sensitivity_curve is None and photon_flux_curve is None):
+            raise ValueError("Must provide either irf, sensitivity_curve or photon_flux_curve.")
         if not irf and (min_energy is None or max_energy is None):
             raise ValueError("Must provide irf or min_energy and max_energy")
 
