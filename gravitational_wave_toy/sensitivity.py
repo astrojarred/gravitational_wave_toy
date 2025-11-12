@@ -1,10 +1,12 @@
 import os
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 
 import astropy.units as u
 import numpy as np
+import numpy.typing as npt
+import pandas as pd
 import scipy
 import scipy.interpolate
 from astropy.coordinates import SkyCoord
@@ -49,13 +51,21 @@ if TYPE_CHECKING:
 
 
 class ScaledTemplateModel(TemplateSpectralModel):
-    """Scaled template spectral model for sensitivity calculations."""
+    """Scaled template spectral model for sensitivity calculations.
+    This is a wrapper around the TemplateSpectralModel that allows for a scaling factor to be applied to the model,
+    and allows for the model shape to be shifted up and down in flux space. This is useful for sensitivity calculations,
+    where we want to be able to scale the model to match the sensitivity curve.
+    """
 
     def __init__(self, scaling_factor: int | float = 1e-6, *args, **kwargs):
         # Create a real amplitude parameter with log scaling
         # Use public API to set normalization if available; otherwise, document the use of the private attribute.
         self.amplitude = Parameter(
-            "amplitude", scaling_factor, unit="1 / (TeV s cm2)", interp="log", is_norm=True
+            "amplitude",
+            scaling_factor,
+            unit="1 / (TeV s cm2)",
+            interp="log",
+            is_norm=True,
         )
 
         self._original_values = None  # Initialize before calling super
@@ -63,28 +73,36 @@ class ScaledTemplateModel(TemplateSpectralModel):
         # When super().__init__ sets self.values, our setter stores it in _original_values
 
     @property
-    def scaling_factor(self):
+    def scaling_factor(self) -> int | float:
         """Scaling factor property that syncs with amplitude.value."""
         return self.amplitude.value
 
     @scaling_factor.setter
-    def scaling_factor(self, value: int | float):
+    def scaling_factor(self, value: int | float) -> None:
         """Set scaling factor by updating amplitude.value."""
         self.amplitude.value = value
 
     @classmethod
     def from_template(
         cls, model: TemplateSpectralModel, scaling_factor: int | float = 1
-    ):
+    ) -> "ScaledTemplateModel":
         """
         Factory method to create a ScaledTemplateModel from an existing TemplateSpectralModel.
+
+        Args:
+            model (TemplateSpectralModel): The template spectral model to create a scaled template model from.
+            scaling_factor (int | float): The scaling factor to apply to the template spectral model.
+
+        Returns:
+            ScaledTemplateModel: A new ScaledTemplateModel instance.
         """
         return cls(
             energy=model.energy, values=model.values, scaling_factor=scaling_factor
         )
 
     @property
-    def values(self):
+    def values(self) -> u.Quantity:
+        """Values property that returns the original values."""
         if self._original_values is None:
             raise ValueError(
                 "ScaledTemplateModel: _original_values is None. "
@@ -94,17 +112,25 @@ class ScaledTemplateModel(TemplateSpectralModel):
         return self._original_values * self.amplitude.value
 
     @values.setter
-    def values(self, values: u.Quantity):
+    def values(self, values: u.Quantity) -> None:
+        """Set the values of the ScaledTemplateModel."""
         self._original_values = values
 
-    def evaluate(self, energy):
-        """Evaluate the model with scaling applied."""
+    def evaluate(self, energy: u.Quantity) -> u.Quantity:
+        """Evaluate the model with scaling applied.
+
+        Args:
+            energy (u.Quantity): The energy to evaluate the model at.
+
+        Returns:
+            u.Quantity: The evaluated model.
+        """
         # Get the unscaled evaluation from parent class
         unscaled_result = super().evaluate(energy)
         # Apply dimensionless amplitude scaling
         return unscaled_result * self.amplitude.value
 
-    def copy(self):
+    def copy(self) -> "ScaledTemplateModel":
         """Create a copy of the ScaledTemplateModel with all attributes preserved."""
         # Create a new instance with the same parameters
         # scaling_factor property will automatically sync with amplitude.value
@@ -115,19 +141,17 @@ class ScaledTemplateModel(TemplateSpectralModel):
         )
 
 
-def _get_model_normalization_info(spectral_model):
+def _get_model_normalization_info(
+    spectral_model: SpectralModel,
+) -> tuple[int | float, u.Unit, Callable]:
     """
     Extract normalization information from different spectral model types.
 
-    Parameters
-    ----------
-    spectral_model : SpectralModel
-        The spectral model to extract normalization from.
+    Args:
+        spectral_model (SpectralModel): The spectral model to extract normalization from.
 
-    Returns
-    -------
-    tuple
-        (normalization_value, normalization_unit, model_copy_function)
+    Returns:
+        tuple: A tuple containing the normalization value, the normalization unit, and a function to copy the model.
     """
     if isinstance(spectral_model, CompoundSpectralModel):
         # For compound models, check if the first component has amplitude
@@ -153,6 +177,10 @@ def _get_model_normalization_info(spectral_model):
                     return model_copy
 
                 return norm_value, norm_unit, copy_func
+            else:
+                raise ValueError(
+                    f"CompoundSpectralModel's model1 has neither 'amplitude' nor 'scaling_factor': {type(spectral_model.model1)}"
+                )
 
     elif hasattr(spectral_model, "amplitude"):
         # Standard models with amplitude parameter
@@ -169,8 +197,12 @@ def _get_model_normalization_info(spectral_model):
     else:
         raise ValueError(f"Unsupported spectral model type: {type(spectral_model)}")
 
+
 class Sensitivity:
+    """Sensitivity class for calculating sensitivity and photon flux."""
+
     ALLOWED_MODES = ["sensitivity", "photon_flux"]
+    """Allowed modes for the sensitivity class."""
 
     def __init__(
         self,
@@ -183,9 +215,28 @@ class Sensitivity:
         max_time: u.Quantity = 43200 * u.s,
         ebl: str | None = None,
         n_sensitivity_points: int = 16,
-        sensitivity_curve: list | None = None,
-        photon_flux_curve: list | None = None,
+        sensitivity_curve: u.Quantity | None = None,
+        photon_flux_curve: u.Quantity | None = None,
     ) -> None:
+        """
+        Initialize the Sensitivity class.
+
+        Args:
+            observatory (str): The observatory to use for the sensitivity calculation.
+            radius (u.Quantity): The radius of the region to calculate the sensitivity for.
+            min_energy (u.Quantity | None): The minimum energy to calculate the sensitivity for.
+            max_energy (u.Quantity | None): The maximum energy to calculate the sensitivity for.
+            irf (str | Path | dict | None): The IRF to use for the sensitivity calculation.
+            min_time (u.Quantity): The minimum time to calculate the sensitivity for.
+            max_time (u.Quantity): The maximum time to calculate the sensitivity for.
+            ebl (str | None): The EBL model to use for the sensitivity calculation.
+            n_sensitivity_points (int): The number of sensitivity points to calculate.
+            sensitivity_curve (u.Quantity | None): The sensitivity curve to use for the sensitivity calculation.
+            photon_flux_curve (u.Quantity | None): The photon flux curve to use for the sensitivity calculation.
+
+        Returns:
+            None: The Sensitivity class is initialized.
+        """
         # check that e_min and e_max are energy and convert to GeV
         if radius.unit.physical_type != "angle":
             raise ValueError(f"radius must be an angle quantity, got {radius}")
@@ -207,7 +258,9 @@ class Sensitivity:
                 )
 
         if not irf and (sensitivity_curve is None and photon_flux_curve is None):
-            raise ValueError("Must provide either irf, sensitivity_curve or photon_flux_curve.")
+            raise ValueError(
+                "Must provide either irf, sensitivity_curve or photon_flux_curve."
+            )
         if not irf and (min_energy is None or max_energy is None):
             raise ValueError("Must provide irf or min_energy and max_energy")
 
@@ -259,7 +312,7 @@ class Sensitivity:
                 fill_value="extrapolate",
             )
         else:
-            self._sensitivity_curve = []
+            self._sensitivity_curve = u.Quantity([], unit=u.Unit("erg cm-2 s-1"))
             self._sensitivity_unit = None
             self._sensitivity = None
 
@@ -273,37 +326,52 @@ class Sensitivity:
                 fill_value="extrapolate",
             )
         else:
-            self._photon_flux_curve = []
+            self._photon_flux_curve = u.Quantity([], unit=u.Unit("cm-2 s-1"))
             self._photon_flux_unit = None
             self._photon_flux = None
 
-        self._sensitivity_information = []
+        self._sensitivity_information: list[dict] = []
 
     @property
-    def sensitivity_curve(self):
+    def sensitivity_curve(self) -> u.Quantity:
+        """Sensitivity curve property that returns the sensitivity curve."""
         return self._sensitivity_curve
 
     @property
-    def photon_flux_curve(self):
+    def photon_flux_curve(self) -> u.Quantity:
+        """Photon flux curve property that returns the photon flux curve."""
         return self._photon_flux_curve
 
-    def table(self):
+    def table(self) -> Table | None:
+        """Table property that returns the sensitivity information as a Table."""
         if not self._sensitivity_information:
             return None
 
         return Table(self._sensitivity_information)
 
-    def pandas(self):
-        if not self._sensitivity_information:
+    def pandas(self) -> pd.DataFrame | None:
+        """Pandas property that returns the sensitivity information as a pandas DataFrame."""
+        table = self.table()
+        if table is None:
             return None
 
-        return self.table().to_pandas()
+        return table.to_pandas()
 
     def get(
         self,
         t: u.Quantity | int | float,
         mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
-    ):
+    ) -> u.Quantity | float:
+        """Get the sensitivity or photon flux for a given time.
+
+        Args:
+            t (u.Quantity | int | float): The time to calculate the sensitivity or photon flux for.
+            mode (Literal["sensitivity", "photon_flux"]): The mode to calculate the sensitivity or photon flux for.
+
+        Returns:
+            u.Quantity | float: The sensitivity or photon flux.
+        """
+
         if mode not in Sensitivity.ALLOWED_MODES:
             allowed_str = " or ".join(f"'{m}'" for m in Sensitivity.ALLOWED_MODES)
             raise ValueError(f"mode must be {allowed_str}, got {mode}")
@@ -339,7 +407,22 @@ class Sensitivity:
         reference: u.Quantity = 1 * u.TeV,
         use_model: bool = True,
         **kwargs,
-    ):
+    ) -> None:
+        """Get the sensitivity curve for a given GRB.
+
+        Args:
+            grb (GRB): The GRB to calculate the sensitivity curve for.
+            n_sensitivity_points (int | None): The number of sensitivity points to calculate.
+            offset (u.Quantity): The offset to use for the sensitivity calculation.
+            n_bins (int | None): The number of bins to use for the sensitivity calculation.
+            starting_amplitude (u.Quantity): The starting amplitude to use for the sensitivity calculation.
+            reference (u.Quantity): The reference energy to use for the sensitivity calculation.
+            use_model (bool): Whether to use the model to calculate the sensitivity curve.
+            **kwargs: Additional keyword arguments to pass to the sensitivity calculation.
+
+        Returns:
+            None: The sensitivity curve is calculated and stored in the _sensitivity_information attribute.
+        """
         if not n_sensitivity_points:
             times = self.times
         else:
@@ -353,8 +436,8 @@ class Sensitivity:
             )
             self.times = times
 
-        sensitivity_curve = []
-        photon_flux_curve = []
+        sensitivity_curve: u.Quantity = u.Quantity([], unit=u.Unit("erg cm-2 s-1"))
+        photon_flux_curve: u.Quantity = u.Quantity([], unit=u.Unit("cm-2 s-1"))
 
         if not n_bins:
             n_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
@@ -462,7 +545,20 @@ class Sensitivity:
         sensitivity_type: Literal["integral", "differential"] = "integral",
         n_bins: int | None = None,
         **kwargs,
-    ) -> float:
+    ) -> u.Quantity | Table:
+        """Get the sensitivity from a model.
+
+        Args:
+            t (u.Quantity): The time to calculate the sensitivity from.
+            spectral_model (SpectralModel): The spectral model to calculate the sensitivity from.
+            redshift (float): The redshift to calculate the sensitivity from.
+            sensitivity_type (Literal["integral", "differential"]): The sensitivity type to calculate the sensitivity from.
+            n_bins (int | None): The number of bins to use for the sensitivity calculation.
+            **kwargs: Additional keyword arguments to pass to the sensitivity calculation.
+
+        Returns:
+            u.Quantity | Table: The sensitivity from the model.
+        """
         if not self.irf:
             raise ValueError("Must provide irf to calculate sensitivity.")
 
@@ -502,7 +598,6 @@ class Sensitivity:
                 max_energy=self.max_energy,
                 model=t_model,
                 n_bins=n_bins,
-                sensitivity_type=sensitivity_type,
                 **kwargs,
             )
 
@@ -510,7 +605,7 @@ class Sensitivity:
 
     @staticmethod
     def simulate_spectrum(
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -524,7 +619,28 @@ class Sensitivity:
         acceptance: float = 1,
         acceptance_off: float = 3,
         random_state="random-seed",
-    ):
+    ) -> SpectrumDatasetOnOff:
+        """Simulate a spectrum for a given IRF, observatory, duration, radius, min_energy, max_energy, spectral_model, source_ra, source_dec, n_bins, offset, acceptance, acceptance_off, and random_state.
+
+        Args:
+            irf (str | Path): The IRF to simulate the spectrum for.
+            observatory (str): The observatory to simulate the spectrum for.
+            duration (u.Quantity): The duration of the observation.
+            radius (u.Quantity): The radius of the region to simulate the spectrum for.
+            min_energy (u.Quantity): The minimum energy to simulate the spectrum for.
+            max_energy (u.Quantity): The maximum energy to simulate the spectrum for.
+            spectral_model (SpectralModel): The spectral model to simulate the spectrum for.
+            source_ra (u.Quantity): The right ascension of the source.
+            source_dec (u.Quantity): The declination of the source.
+            n_bins (int | None): The number of bins to use for the spectrum simulation.
+            offset (u.Quantity): The offset to use for the spectrum simulation.
+            acceptance (float): The acceptance to use for the spectrum simulation.
+            acceptance_off (float): The acceptance off to use for the spectrum simulation.
+            random_state (str): The random state to use for the spectrum simulation.
+
+        Returns:
+            SpectrumDatasetOnOff: The simulated spectrum as a gammapy SpectrumDatasetOnOff object.
+        """
         if not n_bins:
             n_bins = int(np.log10(max_energy / min_energy) * 5)
 
@@ -543,7 +659,10 @@ class Sensitivity:
         model = SkyModel(spectral_model=spectral_model, name="source")
 
         # extract 1D IRFs
-        irfs = load_irf_dict_from_file(irf)
+        if isinstance(irf, dict):
+            irfs = irf
+        else:
+            irfs = load_irf_dict_from_file(irf)
 
         # create observation
         location = observatory_locations[observatory]
@@ -589,8 +708,19 @@ class Sensitivity:
     @staticmethod
     def get_ts_difference(
         norm: float, dataset: SpectrumDatasetOnOff, significance: float = 5
-    ):
+    ) -> float:
+        """Get the TS difference for a given normalization, dataset, and significance.
+
+        Args:
+            norm (float): The normalization to use for the TS difference calculation.
+            dataset (SpectrumDatasetOnOff): The dataset to use for the TS difference calculation.
+            significance (float): The significance to use for the TS difference calculation.
+
+        Returns:
         # Update the spectral model normalization using our helper function
+            float: The TS difference.
+        """
+
         spectral_model = dataset.models[0]._spectral_model
         _, _, copy_func = _get_model_normalization_info(spectral_model)
 
@@ -622,7 +752,7 @@ class Sensitivity:
 
     @staticmethod
     def estimate_integral_sensitivity(
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -640,33 +770,40 @@ class Sensitivity:
         acceptance: int = 1,
         acceptance_off: int = 3,
         random_state="random-seed",
-    ):
+    ) -> dict:
         """Compute excess matching a given significance.
 
         This function is the inverse of `significance`.
 
-        Parameters
-        ----------
-        significance : float
-            Significance.
+        Args:
+            irf (str | Path | dict): Path to the IRF file or dict of IRFs.
+            observatory (str): The observatory to use for the sensitivity calculation.
+            duration (u.Quantity): The duration of the observation.
+            radius (u.Quantity): The radius of the region to simulate the spectrum for.
+            min_energy (u.Quantity): The minimum energy to simulate the spectrum for.
+            max_energy (u.Quantity): The maximum energy to simulate the spectrum for.
+            spectral_model (SpectralModel): The spectral model to simulate the spectrum for.
+            n_iter (int): The number of iterations to use for the sensitivity calculation.
+            n_bins (int | None): The number of bins to use for the sensitivity calculation.
+            offset (u.Quantity): The offset to use for the sensitivity calculation.
+            acceptance (int): The acceptance to use for the sensitivity calculation.
+            acceptance_off (int): The acceptance off to use for the sensitivity calculation.
+            random_state (str): The random state to use for the sensitivity calculation.
 
-        Returns
-        -------
-        n_sig : `numpy.ndarray`
-            Excess.
+        Returns:
+            dict: The sensitivity information.
         """
-
         roots = []
 
         for _ in range(n_iter):
             dataset = Sensitivity.simulate_spectrum(
-                irf=irf,
-                observatory=observatory,
-                duration=duration,
-                radius=radius,
-                min_energy=min_energy,
-                max_energy=max_energy,
-                spectral_model=spectral_model,
+                irf,
+                observatory,
+                duration,
+                radius,
+                min_energy,
+                max_energy,
+                spectral_model,
                 source_ra=source_ra,
                 source_dec=source_dec,
                 n_bins=n_bins,
@@ -756,7 +893,7 @@ class Sensitivity:
 
     @staticmethod
     def estimate_differential_sensitivity(
-        irf: str | Path,
+        irf: str | Path | dict,
         observatory: str,
         duration: u.Quantity,
         radius: u.Quantity,
@@ -772,56 +909,40 @@ class Sensitivity:
         acceptance: float = 1,
         acceptance_off: float = 5,
         bkg_syst_fraction: float = 0.05,
-    ) -> u.Quantity | Table:
+    ) -> Table:
         """
         Calculate the integral sensitivity for a given set of parameters.
 
-        Parameters
-        ----------
-        irf : str or Path
-            Path to the IRF file.
-        observatory : str
-            Name of the observatory.
-        duration : `~astropy.units.Quantity`
-            Observation duration.
-        radius : `~astropy.units.Quantity`
-            Radius of the region of interest.
-        min_energy : `~astropy.units.Quantity`
-            Minimum energy of the energy range.
-        max_energy : `~astropy.units.Quantity`
-            Maximum energy of the energy range.
-        model : `~gammapy.modeling.models.SpectralModel`, str or None, optional
-            Spectral model to use for sensitivity estimation.
-        source_ra : float, optional
-            Right ascension of the source in degrees.
-        source_dec : float, optional
-            Declination of the source in degrees.
-        sigma : float, optional
-            Significance level for sensitivity estimation.
-        n_bins : int, optional
-            Number of energy bins.
-        offset : float, optional
-            Offset of the source position from the pointing position in degrees.
-        gamma_min : int, optional
-            Minimum number of gamma-rays per bin
-        acceptance : float, optional
-            Acceptance for the on-region.
-        acceptance_off : float, optional
-            Acceptance for the off-region.
-        bkg_syst_fraction : float, optional
-            Fractional systematic uncertainty on the background estimation.
+        Args:
+            irf (str | Path | dict): Path to the IRF file or dict of IRFs.
+            observatory (str): Name of the observatory.
+            duration (u.Quantity): Observation duration.
+            radius (u.Quantity): Radius of the region of interest.
+            min_energy (u.Quantity): Minimum energy of the energy range.
+            max_energy (u.Quantity): Maximum energy of the energy range.
+            model (SpectralModel): Spectral model to use for sensitivity estimation.
+            source_ra (float): Right ascension of the source in degrees.
+            source_dec (float): Declination of the source in degrees.
+            sigma (float): Significance level for sensitivity estimation.
+            n_bins (int): Number of energy bins.
+            offset (u.Quantity): Offset of the source position from the pointing position in degrees.
+            gamma_min (int): Minimum number of gamma-rays per bin
+            acceptance (float): Acceptance for the on-region.
+            acceptance_off (float): Acceptance for the off-region.
+            bkg_syst_fraction (float): Fractional systematic uncertainty on the background estimation.
 
-        Returns
-        -------
-        sensitivity : `~astropy.units.Quantity`
-            Integral sensitivity in units of cm^-2 s^-1
+        Returns:
+            Table: The sensitivity table.
         """
 
         # check that IRF file exists
-        irf = Path(irf)
 
         # Load IRFs
-        irfs = load_irf_dict_from_file(irf)
+        if isinstance(irf, dict):
+            irfs = irf
+        else:
+            irf = Path(irf) if isinstance(irf, str) else irf
+            irfs = load_irf_dict_from_file(irf)
 
         # check units
         duration = duration.to("s")
@@ -892,10 +1013,10 @@ class Sensitivity:
             bkg_maker = ReflectedRegionsBackgroundMaker(region_finder=region_finder)
 
             dataset = spectrum_maker.run(
-                empty_dataset.copy(name=str(irf["obs"].obs_id)), irf["obs"]
+                empty_dataset.copy(name=str(irfs["obs"].obs_id)), irfs["obs"]
             )
             # fill the OFF counts
-            dataset_on_off = bkg_maker.run(dataset, irf["obs"])
+            dataset_on_off = bkg_maker.run(dataset, irfs["obs"])
 
         sensitivity_estimator = SensitivityEstimator(
             spectrum=model,
