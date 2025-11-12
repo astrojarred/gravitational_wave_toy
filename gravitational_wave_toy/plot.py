@@ -119,10 +119,7 @@ class GWData:
 
     def _calculate_results(self) -> None:
         """
-        Helper method to calculate the results percentages of detected GRBs and save into a DataFrame.
-
-        Returns:
-            None: The results are stored in the _results attribute.
+        Helper method to calculate the results percentages of detected sources and save into a DataFrame. The results are stored dirctly in the _results attribute.
         """
         data = self._current_data
 
