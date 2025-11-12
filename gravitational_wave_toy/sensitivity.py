@@ -144,7 +144,7 @@ def _get_model_normalization_info(
     spectral_model: SpectralModel,
 ) -> tuple[int | float, u.Unit, Callable]:
     """
-    Extract normalization information from different spectral model types.
+    Extract normalization information from different spectral model types, used to update the spectral model normalization.
 
     Args:
         spectral_model (SpectralModel): The spectral model to extract normalization from.
@@ -419,8 +419,7 @@ class Sensitivity:
             use_model (bool): Whether to use the model to calculate the sensitivity curve.
             **kwargs: Additional keyword arguments to pass to the sensitivity calculation.
 
-        Returns:
-            None: The sensitivity curve is calculated and stored in the _sensitivity_information attribute.
+        The sensitivity curve is calculated and stored directly in the _sensitivity_information attribute. In addition the _sensitivity_curve and _photon_flux_curve attributes are updated.
         """
         if not n_sensitivity_points:
             times = self.times
@@ -716,7 +715,6 @@ class Sensitivity:
             significance (float): The significance to use for the TS difference calculation.
 
         Returns:
-        # Update the spectral model normalization using our helper function
             float: The TS difference.
         """
 
