@@ -126,10 +126,10 @@ class IRF(BaseModel):
         if isinstance(data, dict):
             base_directory = data.get("base_directory")
             filepath = data.get("filepath")
-            
+
             if filepath:
                 filepath = Path(filepath)
-                
+
                 if base_directory:
                     base_directory = Path(base_directory).absolute()
                     filepath = Path(base_directory).absolute() / filepath
@@ -177,6 +177,7 @@ class IRFHouse(BaseModel):
         validate_check_irfs(self): Validates the check_irfs attribute.
         check_all_paths(self): Checks all the IRFs in the IRF house.
     """
+
     base_directory: Path
     check_irfs: bool = True
 
@@ -197,7 +198,6 @@ class IRFHouse(BaseModel):
         if self.check_irfs:
             self.check_all_paths()
         return self
-
 
     # ALPHA SOUTH           =         14 MST  37 SST
     # ALPHA SOUTH MODIFIED  =  4 LST  14 MST  40 SST
@@ -229,7 +229,9 @@ class IRFHouse(BaseModel):
 
         return IRF(
             base_directory=self.base_directory,
-            filepath=Path(f"prod5-v0.1/fits/CTA-Performance-prod5-v0.1-{site_string}-{zenith}deg.FITS/Prod5-{site_string}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.1.fits.gz"),
+            filepath=Path(
+                f"prod5-v0.1/fits/CTA-Performance-prod5-v0.1-{site_string}-{zenith}deg.FITS/Prod5-{site_string}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.1.fits.gz"
+            ),
             configuration=Configuration.alpha,
             site=site,
             zenith=zenith,
@@ -266,7 +268,9 @@ class IRFHouse(BaseModel):
             n_mst = 15
             n_sst = 0
             telescope_string = "4LSTs15MSTs"
-        elif site == Site.south and configuration == Configuration.alpha and not modified:
+        elif (
+            site == Site.south and configuration == Configuration.alpha and not modified
+        ):
             n_lst = 0
             n_mst = 14
             n_sst = 37
@@ -286,7 +290,9 @@ class IRFHouse(BaseModel):
 
         return IRF(
             base_directory=self.base_directory,
-            filepath=Path(f"prod5-v0.2/fits/Prod5-{site_string}{'-NSB5x' if nsb else ''}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.2.fits.gz"),
+            filepath=Path(
+                f"prod5-v0.2/fits/Prod5-{site_string}{'-NSB5x' if nsb else ''}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.2.fits.gz"
+            ),
             configuration=Configuration(configuration),
             site=Site(site),
             zenith=Zenith(zenith) if zenith in [20, 40, 60] else None,
@@ -335,7 +341,9 @@ class IRFHouse(BaseModel):
 
         return IRF(
             base_directory=self.base_directory,
-            filepath=Path(f"prod3b-v2/fits/caldb/data/cta/prod3b-v2/bcf/{site_string}_z{zenith}{azimuth_string}_{duration_string}h/irf_file.fits"),
+            filepath=Path(
+                f"prod3b-v2/fits/caldb/data/cta/prod3b-v2/bcf/{site_string}_z{zenith}{azimuth_string}_{duration_string}h/irf_file.fits"
+            ),
             configuration=Configuration.alpha,
             site=Site(site),
             zenith=Zenith(zenith),

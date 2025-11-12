@@ -1,15 +1,16 @@
 """Tests for ctaoirf module."""
+
 import pytest
 
 from gravitational_wave_toy.ctaoirf import (
+    IRF,
     Azimuth,
     Configuration,
     Duration,
-    IRF,
     IRFHouse,
     Site,
-    Zenith,
     Version,
+    Zenith,
 )
 
 
@@ -141,6 +142,7 @@ def test_irf_repr(tmp_path):
     assert "north" in repr_str
     assert "1800s" in repr_str
 
+
 def test_irf_fspath(tmp_path):
     """Test IRF __fspath__ method."""
     irf_file = tmp_path / "test_irf.fits"
@@ -172,6 +174,7 @@ def test_irfhouse_validation_base_directory_nonexistent():
     with pytest.raises(ValueError, match="does not exist"):
         IRFHouse(base_directory="/nonexistent/path", check_irfs=False)
 
+
 def test_irfhouse_get_irf_invalid_version(tmp_path):
     """Test IRFHouse.get_irf raises error for invalid version."""
     base_dir = tmp_path / "irf_base"
@@ -187,4 +190,3 @@ def test_irfhouse_get_irf_invalid_version(tmp_path):
             azimuth=Azimuth.average,
             version="fake",  # type: ignore
         )
-
