@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from astropy import units as u
 from astropy.io import fits
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class Site(Enum):
@@ -77,7 +77,8 @@ class IRF(BaseModel):
     energy_max: Optional[float] = None
     version: Optional[str] = None
 
-    @validator("base_directory", pre=True)
+    @field_validator("base_directory", mode="before")
+    @classmethod
     def validate_base_directory(cls, base_directory):
         """
         Validates the base directory path.
@@ -101,31 +102,35 @@ class IRF(BaseModel):
                 base_directory = base_directory.resolve()
         return base_directory
 
-    @validator("filepath", pre=True)
-    def validate_filepath(cls, filepath, values):
+    @model_validator(mode="before")
+    @classmethod
+    def validate_filepath(cls, data):
         """
         Validates the given filepath by checking if it exists.
 
         Args:
-            filepath (str): The filepath to be validated.
-            values (dict): A dictionary containing additional values.
+            data: The model data dictionary.
 
         Returns:
-            Path: The validated filepath.
+            dict: The validated data dictionary.
 
         Raises:
             ValueError: If the filepath does not exist.
         """
-        base_directory = values.get("base_directory")
-
-        filepath = Path(filepath)
-
-        if base_directory:
-            base_directory = Path(base_directory).absolute()
-            filepath = Path(base_directory).absolute() / filepath
-        if not filepath.exists():
-            raise ValueError(f"File {filepath} does not exist")
-        return filepath
+        if isinstance(data, dict):
+            base_directory = data.get("base_directory")
+            filepath = data.get("filepath")
+            
+            if filepath:
+                filepath = Path(filepath)
+                
+                if base_directory:
+                    base_directory = Path(base_directory).absolute()
+                    filepath = Path(base_directory).absolute() / filepath
+                if not filepath.exists():
+                    raise ValueError(f"File {filepath} does not exist")
+                data["filepath"] = filepath
+        return data
 
     def __repr__(self):
         title = "CTA IRF" + (f" [{self.version}]" if self.version else "")
@@ -157,7 +162,8 @@ class IRFHouse(BaseModel):
     base_directory: Path | str
     check_irfs: bool = True
 
-    @validator("base_directory", pre=True)
+    @field_validator("base_directory", mode="before")
+    @classmethod
     def validate_base_directory(cls, base_directory):
         base_directory = Path(base_directory)
         if not base_directory.exists():
@@ -168,11 +174,11 @@ class IRFHouse(BaseModel):
             base_directory = base_directory.resolve()
         return base_directory
 
-    @validator("check_irfs", pre=True)
-    def validate_check_irfs(cls, check_irfs, values):
-        if check_irfs:
-            cls.check_all_paths()
-        return check_irfs
+    @model_validator(mode="after")
+    def validate_check_irfs(self):
+        if self.check_irfs:
+            self.check_all_paths()
+        return self
 
     # ALPHA SOUTH           =         14 MST  37 SST
     # ALPHA SOUTH MODIFIED  =  4 LST  14 MST  40 SST
@@ -187,14 +193,14 @@ class IRFHouse(BaseModel):
         duration: Duration,
         azimuth: Azimuth = "average",
     ):
-        site_string = site.capitalize()
-        azimuth_string = f"{azimuth.capitalize()}Az"
-        if site == "north":
+        site_string = site.value.capitalize()
+        azimuth_string = f"{azimuth.value.capitalize()}Az"
+        if site.value == "north":
             n_lst = 4
             n_mst = 9
             n_sst = 0
             telescope_string = "4LSTs09MSTs"
-        elif site == "south":
+        elif site.value == "south":
             n_lst = 0
             n_mst = 14
             n_sst = 37
