@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Sequence, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,6 +7,10 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.colors import LogNorm
 
+
+from gravitational_wave_toy.logging import logger
+
+log = logger(__name__)
 
 class GWData:
     """
@@ -136,7 +141,7 @@ class GWData:
         # Create a DataFrame with unique pairs of "delay" and "obs_time"
         pairs = (
             pd.MultiIndex.from_product(
-                [data["delay"].unique(), self._obs_times], names=["delay", "obs_time"]
+                [data["delay"].unique().tolist(), self._obs_times.tolist()], names=["delay", "obs_time"]
             )
             .to_frame()
             .reset_index(drop=True)
@@ -317,7 +322,7 @@ class GWData:
             df["percent_seen"] = df["percent_seen"] * 100
 
         # Pivot the data so that it can be plotted as a heatmap.
-        pivot = df.pivot("exposure time", "delay", "percent_seen").astype(float)
+        pivot = df.pivot(index="exposure time", columns="delay", values="percent_seen").astype(float)
 
         # Create a new figure and axis.
         if ax is None:
@@ -365,8 +370,8 @@ class GWData:
             cmap=color_scheme,
             vmin=min_value,
             vmax=max_value,
-            xticklabels=x_tick_labels,
-            yticklabels=y_tick_labels,
+            xticklabels=cast(Sequence[str], x_tick_labels) if x_tick_labels is not None else x_tick_labels,
+            yticklabels=cast(Sequence[str], y_tick_labels) if y_tick_labels is not None else y_tick_labels,
             cbar_kws=cbar_kws,
             norm=norm,
             square=square,
@@ -418,9 +423,9 @@ class GWData:
         # Get the figure and save it, or show it if requested.
         fig = heatmap.get_figure()
 
-        print("ax, output_file, filetype", ax, output_file)
-        if output_file:
-            print("saving")
+        log.debug(f"ax: {ax}, output_file: {output_file}, filetype: {self._file_type}")
+        if output_file and fig:
+            log.debug(f"saving plot to {output_file}")
             fig.savefig(output_file, bbox_inches="tight", pad_inches=0)
 
         if not return_ax:
