@@ -4,11 +4,28 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.colors import LogNorm
 
 
 class GWData:
     """
     A class for reading and filtering gravitational wave data stored in Parquet or CSV format.
+
+    Attributes:
+        df (pd.DataFrame): The current (filtered) data frame.
+        observation_times (np.ndarray): The observation times.
+        results (pd.DataFrame): The results.
+
+    Methods:
+        set_filters(self, *args) -> None: Set filters on the current data frame.
+        set_observation_times(self, obs_times: np.ndarray) -> None: Set the observation times.
+        reset(self) -> None: Reset the current data frame to the full data set.
+        plot(self, *args, **kwargs) -> None | plt.Axes: Plot the data.
+
+    Example:
+        >>> gw_data = GWData("data.parquet")
+        >>> gw_data.set_filters(("z", "<", 4))
+        >>> gw_data.plot()
     """
 
     def __init__(self, input_file: str):
@@ -53,12 +70,12 @@ class GWData:
         return self._current_data
 
     @property
-    def observation_times(self) -> list:
+    def observation_times(self) -> np.ndarray:
         """
         Property to access the observation times.
 
         Returns:
-            obs_times (list): The observation times.
+            obs_times (np.ndarray): The observation times.
         """
         return self._obs_times
 
@@ -93,14 +110,20 @@ class GWData:
         return f"GWData({self._input_file})"
 
     @property
-    def _default_delays(self):
+    def _default_delays(self) -> list[int]:
         return [round(i) for i in np.logspace(1, np.log10(7 * 24 * 3600), 50)]
 
     @property
-    def _default_obs_times(self):
+    def _default_obs_times(self) -> np.ndarray:
         return np.logspace(1, np.log10(1 * 3600 + 0.1), 50, dtype=int)
 
-    def _calculate_results(self):
+    def _calculate_results(self) -> None:
+        """
+        Helper method to calculate the results percentages of detected GRBs and save into a DataFrame.
+
+        Returns:
+            None: The results are stored in the _results attribute.
+        """
         data = self._current_data
 
         # Filter out rows with "obs_time" <= 0
@@ -145,6 +168,23 @@ class GWData:
         self._results = pairs
 
     def set_filters(self, *args) -> None:
+        """
+        Set filters on the current data frame.
+
+        Args:
+            *args: The filters to set.
+                Each filter must be a tuple of the form (column, operator, value).
+                The operator must be one of ==, =, <, >, <=, >=, in, not in, notin.
+                The value must be a single value or a list of values.
+
+        Returns:
+            None: The current data frame is updated in place.
+
+        Example:
+            Filter on the redshift column:
+            >>> gw_data.set_filters(("z", "<", 4))
+        """
+
         self._current_data = self._data
         self._results = pd.DataFrame(
             columns=["delay", "obs_time", "n_seen", "total", "percent_seen"]
@@ -189,14 +229,14 @@ class GWData:
                     self._current_data[column] >= value
                 ]
 
-    def set_observation_times(self, obs_times: list) -> None:
+    def set_observation_times(self, obs_times: np.ndarray) -> None:
         """
         Set the observation times.
 
         Args:
-            obs_times (list): The observation times.
+            obs_times (np.ndarray): The observation times.
         """
-        self._obs_times = obs_times
+        self._obs_times = np.array(obs_times)
 
     def reset(self) -> None:
         """
@@ -208,56 +248,65 @@ class GWData:
         )
 
     @staticmethod
-    def _convert_time(seconds: float):
+    def _convert_time(seconds: float) -> str:
+        """
+        Helper method to convert a time in seconds to a string representation of the time.
+
+        Args:
+            seconds (float): The time in seconds.
+
+        Returns:
+            str: A string representation of the time.
+        """
         if seconds < 60:
-            return f"{int(seconds):.0f}s"
-        if seconds < 3600:
-            return f"{int(seconds) / 60:.0f}m"
-        if seconds < 86400:
-            return f"{int(seconds) / 3600:.0f}h"
+            return f"{seconds:.0f}s"
+        elif seconds < 3600:
+            return f"{seconds / 60:.0f}m"
+        elif seconds < 86400:
+            return f"{seconds / 3600:.0f}h"
         else:
-            return f"{int(seconds) / 86400:.0f}d"
+            return f"{seconds / 86400:.0f}d"
 
     def plot(
         self,
-        ax=None,
-        output_file=None,
-        annotate=False,
-        x_tick_labels=None,
-        y_tick_labels=None,
-        min_value=None,
-        max_value=None,
-        color_scheme="mako",
-        color_scale=None,
-        as_percent=False,
-        title=None,
-        subtitle=None,
-        n_labels=10,
-        square=True,
-        return_ax=True,
-    ) -> None:
+        ax: plt.Axes | None = None,
+        output_file: str | None = None,
+        annotate: bool = False,
+        x_tick_labels: np.ndarray | list[str] | None = None,
+        y_tick_labels: np.ndarray | list[str] | None = None,
+        min_value: float | None = None,
+        max_value: float | None = None,
+        color_scheme: str = "mako",
+        color_scale: str | None = None,
+        as_percent: bool = False,
+        title: str | None = None,
+        subtitle: str | None = None,
+        n_labels: int = 10,
+        square: bool = True,
+        return_ax: bool = True,
+    ) -> None | plt.Axes:
         """
         Generates a heatmap of the data stored in the instance of the class.
 
         Args:
-            output_file (str): The path to the output file.
+            ax (plt.Axes): The axis object to plot on.
+            output_file (str | None): The path to the output file.
             annotate (bool): Whether or not to annotate the heatmap.
-            x_tick_labels (list): The labels for the x-axis ticks.
-            y_tick_labels (list): The labels for the y-axis ticks.
-            min_value (float): The minimum value for the color scale.
-            max_value (float): The maximum value for the color scale.
+            x_tick_labels (list[str] | None): The labels for the x-axis ticks.
+            y_tick_labels (list[str] | None): The labels for the y-axis ticks.
+            min_value (float | None): The minimum value for the color scale.
+            max_value (float | None): The maximum value for the color scale.
             color_scheme (str): The name of the color scheme to use for the heatmap.
-            color_scale (str): The type of color scale to use for the heatmap.
+            color_scale (str | None): The type of color scale to use for the heatmap.
             as_percent (bool): Whether or not to display the results as percentages.
-            title (str): The title for the plot.
-            subtitle (str): The subtitle for the plot.
+            title (str | None): The title for the plot.
+            subtitle (str | None): The subtitle for the plot.
             n_labels (int): The number of labels to display on the axes.
-            square (bool): If True, set the Axes aspect to “equal” so each cell will be square-shaped.
-            show_only (bool): Whether or not to show the plot instead of saving it.
+            square (bool): If True, set the Axes aspect to "equal" so each cell will be square-shaped.
             return_ax (bool): Whether or not to return the axis object.
 
         Returns:
-            Either `matplotlib.axes._axes.Axes` or None
+            Either `matplotlib.axes._axes.Axes` or None if `return_ax` is False.
         """
         # Get the results dataframe from the class.
         df = self.results
@@ -275,16 +324,16 @@ class GWData:
 
         # Create a new figure and axis.
         if ax is None:
-            f, ax = plt.subplots(figsize=(9, 9))
+            _, ax = plt.subplots(figsize=(9, 9))
 
         # Set the colorbar options.
         cbar_kws = {"label": "Percentage of GRBs detected", "orientation": "vertical"}
 
         # Set the color scale if logarithmic scale is selected.
         if color_scale == "log":
-            from matplotlib.colors import LogNorm
-
-            color_scale = LogNorm(vmin=min_value, vmax=max_value)
+            norm = LogNorm(vmin=min_value, vmax=max_value)
+        else:
+            norm = None
 
         # Set the x-axis tick labels.
         if not x_tick_labels:
@@ -322,6 +371,7 @@ class GWData:
             xticklabels=x_tick_labels,
             yticklabels=y_tick_labels,
             cbar_kws=cbar_kws,
+            norm=norm,
             square=square,
         )
 
@@ -341,16 +391,16 @@ class GWData:
             for z in zeniths[1:]:
                 zenith += f"/z{z}"
 
-        if title == False:
+        if not title:
             pass
         elif subtitle:
-            ax.title(
+            ax.set_title(
                 f"GRB Detectability for {site}, {zenith}: {subtitle} (n={self._results.groupby('delay').total.first().iloc[0]})"
             )
         elif title:
-            ax.title(title)
+            ax.set_title(title)
         else:
-            ax.title(
+            ax.set_title(
                 f"GRB Detectability for {site}, {zenith} (n={self._results.groupby('delay').total.first().iloc[0]})"
             )
 
@@ -377,9 +427,9 @@ class GWData:
         if output_file:
             print("saving")
             fig.savefig(output_file, bbox_inches="tight", pad_inches=0)
-        elif not ax:
-            plt.show()
 
-        # Return the axis object if requested:
-        if return_ax:
-            return ax
+        if not return_ax:
+            plt.show()
+            return None
+
+        return ax
