@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 import astropy.units as u
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import scipy
 import scipy.interpolate
@@ -47,7 +46,7 @@ log = logger(__name__)
 
 # import types
 if TYPE_CHECKING:
-    from .observe import GRB
+    from .source import Source
 
 
 class ScaledTemplateModel(TemplateSpectralModel):
@@ -361,7 +360,7 @@ class Sensitivity:
         self,
         t: u.Quantity | int | float,
         mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
-    ) -> u.Quantity | float:
+    ) -> u.Quantity:
         """Get the sensitivity or photon flux for a given time.
 
         Args:
@@ -369,7 +368,7 @@ class Sensitivity:
             mode (Literal["sensitivity", "photon_flux"]): The mode to calculate the sensitivity or photon flux for.
 
         Returns:
-            u.Quantity | float: The sensitivity or photon flux.
+            u.Quantity: The sensitivity or photon flux.
         """
 
         if mode not in Sensitivity.ALLOWED_MODES:
@@ -388,18 +387,18 @@ class Sensitivity:
 
         if mode == "sensitivity":
             if not self._sensitivity:
-                raise ValueError("Sensitivity curve not yet calculated for this GRB.")
+                raise ValueError("Sensitivity curve not yet calculated for this source.")
             log_sensitivity = self._sensitivity(log_t)
             return 10**log_sensitivity * self._sensitivity_unit
 
         if not self._photon_flux:
-            raise ValueError("Photon flux curve not yet calculated for this GRB.")
+            raise ValueError("Photon flux curve not yet calculated for this source.")
         log_photon_flux = self._photon_flux(log_t)
         return 10**log_photon_flux * self._photon_flux_unit
 
     def get_sensitivity_curve(
         self,
-        grb: "GRB",
+        source: "Source",
         n_sensitivity_points: int | None = None,
         offset: u.Quantity = 0.0 * u.deg,
         n_bins: int | None = None,
@@ -408,10 +407,10 @@ class Sensitivity:
         use_model: bool = True,
         **kwargs,
     ) -> None:
-        """Get the sensitivity curve for a given GRB.
+        """Get the sensitivity curve for a given source.
 
         Args:
-            grb (GRB): The GRB to calculate the sensitivity curve for.
+            source (Source): The source to calculate the sensitivity curve for.
             n_sensitivity_points (int | None): The number of sensitivity points to calculate.
             offset (u.Quantity): The offset to use for the sensitivity calculation.
             n_bins (int | None): The number of bins to use for the sensitivity calculation.
@@ -442,7 +441,7 @@ class Sensitivity:
         if not n_bins:
             n_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
 
-        if grb.file_type == "txt" and use_model:
+        if source.file_type == "txt" and use_model:
             # raise a warning that we are using a power law model
             warnings.warn(
                 "Using a power law model for sensitivity calculation. If you don't want to fit a power law, set use_model=False.",
@@ -454,11 +453,11 @@ class Sensitivity:
                 s = self.get_sensitivity_from_model(
                     t=t,
                     spectral_model=PowerLawSpectralModel(
-                        index=-grb.get_spectral_index(t),
+                        index=-source.get_spectral_index(t),
                         amplitude=starting_amplitude,
                         reference=reference,
                     ),
-                    redshift=grb.dist.z if grb.dist is not None else 0,
+                    redshift=source.dist.z if source.dist is not None else 0,
                     sensitivity_type="integral",
                     offset=offset,
                     n_bins=n_bins,
@@ -467,8 +466,8 @@ class Sensitivity:
             else:
                 s = self.get_sensitivity_from_model(
                     t=t,
-                    spectral_model=grb.get_template_spectrum(t),
-                    redshift=grb.dist.z if grb.dist is not None else 0,
+                    spectral_model=source.get_template_spectrum(t),
+                    redshift=source.dist.z if source.dist is not None else 0,
                     sensitivity_type="integral",
                     offset=offset,
                     n_bins=n_bins,
