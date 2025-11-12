@@ -1,3 +1,10 @@
+"""Source class for loading and analyzing time-energy spectra of astrophysical events.
+
+This module provides functionality for reading spectral data from various file formats
+(FITS, CSV, text), interpolating spectra, fitting spectral indices, and determining
+source visibility and significance for gamma-ray observations.
+"""
+
 import math
 import os
 import re
@@ -27,13 +34,40 @@ log = logger(__name__)
 
 
 class Source:
-    """Class for loading and storing time-energy spectra of events.
+    """Class for loading and analyzing time-energy spectra of astrophysical events.
+
+    The Source class handles reading spectral data from various file formats (FITS, CSV, text),
+    interpolating spectra in time and energy, fitting power-law spectral indices, and determining
+    source visibility and detection significance for gamma-ray observations. It supports EBL
+    absorption modeling and integration with sensitivity curves for observability calculations.
 
     Args:
-        filepath (str | Path): The path to the source file or directory.
-        min_energy (u.Quantity | None): The minimum energy to observe the source at, usually bounded by the IRF.
-        max_energy (u.Quantity | None): The maximum energy to observe the source at, usually bounded by the IRF.
-        ebl (str | None): The EBL model to use for the source. e.g. "franceschini"
+        filepath: Path to the source file or directory. Supports:
+            - FITS files (.fits, .fit, .fits.gz, .fit.gz)
+            - CSV files (.csv) with optional metadata files
+            - Directories containing text files with spectral data
+        min_energy: Minimum energy for spectral integration, typically bounded by the IRF.
+            If None, uses the minimum energy from the data.
+        max_energy: Maximum energy for spectral integration, typically bounded by the IRF.
+            If None, uses the maximum energy from the data.
+        ebl: Name of the EBL absorption model to apply (e.g., "franceschini", "dominguez").
+            If None and a distance/redshift is available, no EBL model is applied.
+
+    Attributes:
+        time: Array of time values (astropy Quantity, units of seconds).
+        energy: Array of energy values (astropy Quantity, units of GeV).
+        spectra: 2D array of differential flux values (shape: [n_energy, n_time],
+            units of cm⁻² s⁻¹ GeV⁻¹).
+        id: Source identifier.
+        long: Longitude (astropy Quantity, units of radians).
+        lat: Latitude (astropy Quantity, units of radians).
+        eiso: Isotropic equivalent energy (astropy Quantity, units of erg).
+        dist: Distance to the source (astropy Distance object).
+        angle: Viewing angle (astropy Quantity, units of degrees).
+        fluence: Fluence value (astropy Quantity, units of cm⁻²).
+        seen: Visibility status (True if detectable, False if not, "error" if calculation failed).
+        obs_time: Required observation time to detect the source (astropy Quantity).
+        end_time: Time at which detection occurs (astropy Quantity).
     """
 
     def __init__(
@@ -118,6 +152,7 @@ class Source:
         log.debug(f"Loaded event {self.id}º")
 
     def __repr__(self):
+        """Return a string representation of the Source instance."""
         return f"<Source(id={self.id})>"
 
     @property
@@ -138,6 +173,20 @@ class Source:
         }
 
     def read_fits(self) -> None:
+        """Read spectral data and metadata from a FITS file.
+
+        Extracts time-energy spectra from the FITS file structure, where HDU[1] contains
+        energy data, HDU[2] contains time data, and HDU[3] contains the light curve
+        spectra. Metadata fields (longitude, latitude, EISO, distance, angle, fluence)
+        are read from the primary header if present, with missing fields logged as info.
+
+        Sets the following attributes:
+            - self.time: 1D array of time values (astropy Quantity, units of seconds)
+            - self.energy: 1D array of energy values (astropy Quantity, units of GeV)
+            - self.spectra: 2D array of flux values (shape: [n_energy, n_time],
+              units of cm⁻² s⁻¹ GeV⁻¹)
+            - Metadata attributes (long, lat, eiso, dist, angle, fluence) if present
+        """
         with fits.open(self.filepath) as hdu_list:
             # Try/catch each header field; set to default if missing
             try:
@@ -179,6 +228,27 @@ class Source:
             ) * u.Unit("1 / (cm2 s GeV)")
 
     def read_txt(self) -> None:
+        """Read spectral data from a directory of text files.
+
+        Expects a directory containing spectral files named with the pattern
+        '{basename}_tobs=NN.txt', where basename matches the directory name and NN
+        is a time index. Each file should contain two columns: energy (GeV) and
+        differential flux (cm⁻² s⁻¹ GeV⁻¹).
+
+        Files are sorted by their time index and combined into a time-energy grid.
+        The energy grid is taken from the first file, assuming all files share the
+        same energy bins.
+
+        Sets the following attributes:
+            - self.time: 1D array of time values (astropy Quantity, units of seconds)
+            - self.energy: 1D array of energy values (astropy Quantity, units of GeV)
+            - self.spectra: 2D array of flux values (shape: [n_energy, n_time],
+              units of cm⁻² s⁻¹ GeV⁻¹)
+            - self.min_energy, self.max_energy: if not already set
+
+        Raises:
+            FileNotFoundError: If no matching spectral files are found in the directory.
+        """
         # expect a directory containing source spectral files like source001_tobs=00.txt, source001_tobs=01.txt, etc.
         dir_path = self.filepath
 
@@ -463,7 +533,23 @@ class Source:
     def set_ebl_model(self, ebl: str | None, z: float | None = None) -> bool:
         """Set or update the EBL absorption model and optionally the source redshift.
 
-        Returns True if the distance (redshift) was changed.
+        Configures the extragalactic background light (EBL) absorption model for the source.
+        If a redshift is provided, the source distance is updated accordingly. The EBL model
+        is used to account for gamma-ray absorption due to pair production with EBL photons.
+
+        Args:
+            ebl: Name of the EBL model to use. Must be one of the built-in models available
+                in Gammapy (e.g., "franceschini", "dominguez", etc.). If None, no EBL model
+                is set. Requires GAMMAPY_DATA environment variable to be set.
+            z: Optional redshift value. If provided and different from the current redshift,
+                the source distance is updated using the default cosmology.
+
+        Returns:
+            True if the distance (redshift) was changed, False otherwise.
+
+        Raises:
+            ValueError: If the EBL model name is not recognized, or if GAMMAPY_DATA
+                environment variable is not set when attempting to use an EBL model.
         """
         distance_changed = False
 
@@ -512,6 +598,17 @@ class Source:
         return distance_changed
 
     def set_spectral_grid(self):
+        """Create an interpolator for the time-energy spectral grid.
+
+        Builds a RegularGridInterpolator on log-space coordinates (log energy, log time)
+        to enable efficient interpolation of flux values at arbitrary time and energy
+        points. The interpolator uses log-space to better handle the wide dynamic range
+        typical of gamma-ray spectra.
+
+        The interpolator is stored in self.SpectralGrid and is used by get_spectrum()
+        and get_flux() methods. This method is idempotent and will not recreate the
+        grid if it already exists.
+        """
         if self.SpectralGrid is not None:
             return
 
@@ -533,6 +630,20 @@ class Source:
         return_plot=False,
         cutoff_flux=1e-20 * u.Unit("1 / (cm2 s GeV)"),
     ):
+        """Display a 2D visualization of the spectral pattern as a function of time and energy.
+
+        Creates a heatmap showing the log of the differential flux across the time-energy
+        plane. Values below the cutoff flux are set to the cutoff to improve visualization
+        of the spectral structure.
+
+        Args:
+            resolution: Number of grid points along each axis for the visualization.
+            return_plot: If True, return the matplotlib figure instead of displaying it.
+            cutoff_flux: Minimum flux value to display; values below this are set to the cutoff.
+
+        Returns:
+            matplotlib.pyplot if return_plot is True, otherwise None.
+        """
         self.set_spectral_grid()
 
         loge = np.log10(self.energy.value)
@@ -567,6 +678,24 @@ class Source:
     def get_spectrum(
         self, time: u.Quantity, energy: u.Quantity | None = None
     ) -> float | np.ndarray:
+        """Get the differential flux spectrum at a given time.
+
+        Interpolates the spectral grid to return flux values at the specified time.
+        If energy is not provided, returns the spectrum across the full energy grid.
+
+        Args:
+            time: Time at which to evaluate the spectrum. Must have time units.
+            energy: Energy or array of energies at which to evaluate. If None, uses
+                the full energy grid. Must have energy units.
+
+        Returns:
+            Differential flux (u.Quantity with units cm⁻² s⁻¹ GeV⁻¹). Returns a scalar
+            for a single energy point, or an array for multiple energies.
+
+        Raises:
+            ValueError: If time or energy units are incorrect, or if spectral grid
+                has not been initialized.
+        """
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -600,6 +729,24 @@ class Source:
         ) * u.Unit("1 / (cm2 s GeV)")
 
     def get_flux(self, energy: u.Quantity, time: u.Quantity | None = None):
+        """Get the differential flux at a given energy.
+
+        Interpolates the spectral grid to return flux values at the specified energy.
+        If time is not provided, returns the flux across the full time grid.
+
+        Args:
+            energy: Energy at which to evaluate the flux. Must have energy units.
+            time: Time or array of times at which to evaluate. If None, uses the
+                full time grid. Must have time units.
+
+        Returns:
+            Differential flux (u.Quantity with units cm⁻² s⁻¹ GeV⁻¹). Returns a scalar
+            for a single time point, or an array for multiple times.
+
+        Raises:
+            ValueError: If energy or time units are incorrect, or if spectral grid
+                has not been initialized.
+        """
         if not energy.unit.physical_type == "energy":
             raise ValueError(f"energy must be an energy quantity, got {energy}")
 
@@ -638,6 +785,21 @@ class Source:
         amplitude: u.Quantity | None = None,
         reference: u.Quantity = 1 * u.TeV,
     ):
+        """Create a Gammapy PowerLawSpectralModel representing the spectrum at a given time.
+
+        Fits a power law to the spectrum at the specified time and returns a Gammapy
+        spectral model. The spectral index is determined from the fitted indices, and
+        the amplitude is either calculated at the reference energy or provided directly.
+
+        Args:
+            time: Time at which to evaluate the spectrum. Must have time units.
+            amplitude: Optional amplitude at the reference energy. If None, the amplitude
+                is calculated from the flux at the reference energy.
+            reference: Reference energy for the power law model. Defaults to 1 TeV.
+
+        Returns:
+            PowerLawSpectralModel instance representing the spectrum at the given time.
+        """
         return PowerLawSpectralModel(
             index=-self.get_spectral_index(time),
             amplitude=self.get_flux(energy=reference, time=time).to("cm-2 s-1 TeV-1")
@@ -647,12 +809,41 @@ class Source:
         )
 
     def get_template_spectrum(self, time: u.Quantity, scaling_factor: int | float = 1):
+        """Create a template spectral model from the spectrum at a given time.
+
+        Extracts the full energy spectrum at the specified time and wraps it in a
+        ScaledTemplateModel, which can be used for likelihood fitting with an
+        adjustable normalization.
+
+        Args:
+            time: Time at which to extract the spectrum. Must have time units.
+            scaling_factor: Initial scaling factor for the template model. Defaults to 1.
+
+        Returns:
+            ScaledTemplateModel instance containing the spectrum at the given time.
+        """
         dNdE = self.get_spectrum(time)
         return ScaledTemplateModel(
             energy=self.energy, values=dNdE, scaling_factor=scaling_factor
         )
 
     def fit_spectral_indices(self):
+        """Fit power-law spectral indices for each time bin.
+
+        Performs a linear fit in log-log space (log flux vs log energy) for each time
+        bin to determine the spectral index. Only time bins with at least 3 valid
+        (finite and positive) flux points are fitted. The results are stored and used
+        to create interpolation functions for the spectral index and amplitude as
+        functions of time.
+
+        Sets the following attributes:
+            - self._indices: List of fitted spectral indices (slopes)
+            - self._amplitudes: List of fitted amplitudes (log flux at 1 GeV)
+            - self._index_times: List of times for which fits were successful
+            - self._bad_index_times: List of times that could not be fitted
+            - self.index_at: Interpolation function for spectral index vs log(time)
+            - self.amplitude_at: Interpolation function for amplitude vs log(time)
+        """
         spectra = self.spectra.T
 
         indices = []
@@ -695,6 +886,21 @@ class Source:
         )(x)
 
     def get_spectral_index(self, time: u.Quantity) -> float:
+        """Get the power-law spectral index at a given time.
+
+        Uses the fitted spectral indices and interpolation to return the spectral index
+        (power-law slope) at the specified time. The index is defined such that
+        flux ∝ E^index, so typical values are negative.
+
+        Args:
+            time: Time at which to evaluate the spectral index. Must have time units.
+
+        Returns:
+            Spectral index as a float (dimensionless).
+
+        Raises:
+            ValueError: If time units are incorrect.
+        """
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -703,6 +909,21 @@ class Source:
         return self.index_at(np.array([np.log10(time.value)]))[0]
 
     def get_spectral_amplitude(self, time: u.Quantity) -> u.Quantity:
+        """Get the spectral amplitude (flux at 1 GeV) at a given time.
+
+        Uses the fitted spectral amplitudes and interpolation to return the differential
+        flux at 1 GeV for the specified time. This represents the normalization of
+        the power-law spectrum.
+
+        Args:
+            time: Time at which to evaluate the amplitude. Must have time units.
+
+        Returns:
+            Differential flux at 1 GeV (u.Quantity with units cm⁻² s⁻¹ GeV⁻¹).
+
+        Raises:
+            ValueError: If time units are incorrect.
+        """
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -713,6 +934,18 @@ class Source:
         )
 
     def show_spectral_evolution(self, resolution=100, return_plot=False):
+        """Plot the evolution of the spectral index over time.
+
+        Creates a plot showing how the power-law spectral index changes as a function
+        of time. The spectral indices are first fitted if not already done.
+
+        Args:
+            resolution: Number of time points to evaluate for the plot.
+            return_plot: If True, return the matplotlib figure instead of displaying it.
+
+        Returns:
+            matplotlib.pyplot if return_plot is True, otherwise None.
+        """
         self.fit_spectral_indices()
 
         t = np.linspace(
@@ -737,6 +970,29 @@ class Source:
         mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
         use_model: bool = True,
     ):
+        """Calculate the integral flux or energy flux over the energy range.
+
+        Integrates the spectrum over the energy range defined by min_energy and max_energy.
+        The spectrum can be represented either as a power-law model (use_model=True) or
+        as a template spectrum (use_model=False). EBL absorption is applied if an EBL
+        model is set.
+
+        Args:
+            time: Time at which to evaluate the spectrum. Must have time units.
+            first_energy_bin: First energy bin (used for compatibility, not directly
+                in calculation). Must have energy units.
+            mode: Integration mode. "photon_flux" returns the integral flux (photons),
+                "sensitivity" returns the energy flux (GeV).
+            use_model: If True, use a power-law model; if False, use the template spectrum.
+
+        Returns:
+            Integral flux (u.Quantity with units cm⁻² s⁻¹) for photon_flux mode, or
+            energy flux (u.Quantity with units GeV cm⁻² s⁻¹) for sensitivity mode.
+
+        Raises:
+            ValueError: If time or energy units are incorrect, or if min/max energy
+                are not set.
+        """
         if not time.unit.physical_type == "time":
             raise ValueError(f"time must be a time quantity, got {time}")
 
@@ -777,6 +1033,25 @@ class Source:
         stop_time: u.Quantity,
         mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
+        """Calculate the fluence (time-integrated flux) over a time interval.
+
+        Integrates the integral spectrum over time from start_time to stop_time.
+        The fluence represents the total energy or photons received per unit area
+        over the observation period.
+
+        Args:
+            start_time: Start of the integration interval. Must have time units.
+            stop_time: End of the integration interval. Must have time units.
+            mode: Integration mode. "photon_flux" returns photon fluence,
+                "sensitivity" returns energy fluence.
+
+        Returns:
+            Fluence (u.Quantity with units cm⁻² for photon_flux mode, or
+            GeV cm⁻² for sensitivity mode).
+
+        Raises:
+            ValueError: If time units are incorrect.
+        """
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -803,6 +1078,17 @@ class Source:
         return fluence
 
     def output(self):
+        """Generate a dictionary representation of the source for serialization.
+
+        Creates a dictionary containing all source attributes except for large data
+        arrays and internal interpolation objects. This is useful for saving results
+        or converting to JSON. Numpy arrays are converted to lists, and numpy numeric
+        types are converted to native Python types.
+
+        Returns:
+            Dictionary containing source metadata and observation results, excluding
+            large data structures like time, energy, spectra, and interpolation grids.
+        """
         keys_to_drop = [
             "time",
             "energy",
@@ -848,6 +1134,22 @@ class Source:
         sensitivity: Sensitivity,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ) -> float:
+        """Calculate the log ratio of average flux to sensitivity.
+
+        Computes the logarithm of (average_flux / sensitivity) for a given exposure
+        window. A positive value indicates the source is detectable above the sensitivity
+        threshold. The average flux is calculated from the fluence over the exposure time.
+
+        Args:
+            stop_time: End time of the exposure window in seconds (as float).
+            start_time: Start time of the exposure window. Must have time units.
+            sensitivity: Sensitivity object providing the sensitivity curve.
+            sensitivity_mode: Mode for sensitivity calculation ("sensitivity" or "photon_flux").
+
+        Returns:
+            Log10 ratio of average flux to sensitivity (dimensionless float).
+            Positive values indicate detectability.
+        """
         # start time = delay
         # stop_time (t) = delay + exposure time
 
@@ -874,6 +1176,21 @@ class Source:
         sensitivity: Sensitivity,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ) -> bool:
+        """Determine if the source is detectable above the sensitivity threshold.
+
+        Checks whether the average flux over the specified time window exceeds the
+        sensitivity for that exposure time. This is a binary check based on the
+        visibility function.
+
+        Args:
+            start_time: Start of the observation window. Must have time units.
+            stop_time: End of the observation window. Must have time units.
+            sensitivity: Sensitivity object providing the sensitivity curve.
+            sensitivity_mode: Mode for sensitivity calculation ("sensitivity" or "photon_flux").
+
+        Returns:
+            True if the source is detectable (average flux > sensitivity), False otherwise.
+        """
         # print(f'Start time: {start_time}, Stop time: {stop_time}')
         return (
             self.visibility_function(
@@ -899,6 +1216,40 @@ class Source:
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
         **kwargs,
     ):
+        """Determine when the source becomes detectable and calculate observation parameters.
+
+        Finds the earliest time at which the source becomes visible above the sensitivity
+        threshold, starting from start_time and searching up to max_time. Uses root-finding
+        to locate when the visibility function crosses zero. If the source is immediately
+        visible, returns the minimum observation time (target_precision).
+
+        Sets observation results in the source object:
+            - self.seen: True if detectable, False if not, "error" if calculation failed
+            - self.obs_time: Required observation time to detect the source
+            - self.end_time: Time at which detection occurs
+            - self.error_message: Error message if calculation failed
+
+        Args:
+            sensitivity: Sensitivity object providing the sensitivity curve.
+            start_time: Time to start searching for detectability. Defaults to 0 s.
+            min_energy: Minimum energy for integration. If None, uses sensitivity limits.
+            max_energy: Maximum energy for integration. If None, uses sensitivity limits.
+            max_time: Maximum time to search for detectability. Defaults to 4 hours.
+            target_precision: Time precision for the observation time. Defaults to 1 s.
+            n_time_steps: Number of time steps for root-finding grid.
+            xtol: Absolute tolerance for root-finding.
+            rtol: Relative tolerance for root-finding.
+            sensitivity_mode: Mode for sensitivity calculation ("sensitivity" or "photon_flux").
+            **kwargs: Additional arguments passed to the root-finding function.
+
+        Returns:
+            Dictionary representation of the source (via output() method) containing
+            observation results.
+
+        Raises:
+            ValueError: If time or energy units are incorrect, or if min/max energy
+                are not set.
+        """
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
 
@@ -986,6 +1337,24 @@ class Source:
         sensitivity: Sensitivity,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
+        """Calculate the detection significance for a given observation window.
+
+        Computes the significance in units of sigma, assuming the sensitivity curve
+        represents a 5-sigma detection threshold. The significance scales with the
+        square root of time for a given flux level.
+
+        Args:
+            start_time: Start of the observation window. Must have time units.
+            stop_time: End of the observation window. Must have time units.
+            sensitivity: Sensitivity object providing the sensitivity curve.
+            sensitivity_mode: Mode for sensitivity calculation ("sensitivity" or "photon_flux").
+
+        Returns:
+            Detection significance in units of sigma (dimensionless float or array).
+
+        Raises:
+            ValueError: If time units are incorrect.
+        """
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
         if not stop_time.unit.physical_type == "time":
@@ -1017,6 +1386,30 @@ class Source:
         n_time_steps: int = 50,
         sensitivity_mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
     ):
+        """Calculate the evolution of detection significance over time.
+
+        Computes the significance as a function of observation end time, starting
+        from start_time and evaluating at logarithmically spaced points up to max_time.
+        This shows how the significance improves with longer observations.
+
+        Args:
+            sensitivity: Sensitivity object providing the sensitivity curve.
+            start_time: Start time for all observations. Must have time units.
+            max_time: Maximum end time to evaluate. Defaults to 12 hours.
+            min_energy: Minimum energy for integration. If None, uses sensitivity limits.
+            max_energy: Maximum energy for integration. If None, uses sensitivity limits.
+            n_time_steps: Number of time points to evaluate. Defaults to 50.
+            sensitivity_mode: Mode for sensitivity calculation ("sensitivity" or "photon_flux").
+
+        Returns:
+            Tuple of (end_times, significances) where:
+                - end_times: Array of observation end times in seconds
+                - significances: Array of corresponding significance values in sigma
+
+        Raises:
+            ValueError: If time or energy units are incorrect, or if min/max energy
+                are not set.
+        """
         if not start_time.unit.physical_type == "time":
             raise ValueError(f"start_time must be a time quantity, got {start_time}")
 
