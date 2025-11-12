@@ -1,5 +1,5 @@
 parameter,value,units
-event_id,42.0,
+id,42.0,
 longitude,0.0,rad
 latitude,1.0,rad
 eiso,2e+50,erg
