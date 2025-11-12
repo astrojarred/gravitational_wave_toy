@@ -85,8 +85,6 @@ def test_logger_critical():
 
 def test_logger_handlers():
     """Test that logger has both file and stream handlers."""
-    import logging
-
     # Clear any existing handlers to avoid interference from other tests
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
