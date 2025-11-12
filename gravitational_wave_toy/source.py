@@ -514,8 +514,11 @@ class Source:
                             TypeError,
                             u.UnitConversionError,
                         ) as field_exc:
+                            # Convert bytes to strings for safe formatting
+                            value_str = value.decode('utf-8') if isinstance(value, bytes) else str(value)
+                            unit_str = unit.decode('utf-8') if isinstance(unit, bytes) else str(unit)
                             log.warning(
-                                f"Could not parse metadata field '{metadata_key}' (value={value}, unit={unit}) in {metadata_path}: {type(field_exc).__name__} {field_exc}. Using default value for '{attr_name}'."
+                                f"Could not parse metadata field '{metadata_key}' (value={value_str}, unit={unit_str}) in {metadata_path}: {type(field_exc).__name__} {field_exc}. Using default value for '{attr_name}'."
                             )
             except Exception as e:
                 log.warning(
