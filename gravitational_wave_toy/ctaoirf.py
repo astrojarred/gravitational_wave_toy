@@ -44,7 +44,7 @@ class Version(Enum):
 
 class IRF(BaseModel):
     """
-    A helper class which encapsulates the Instrument Response Function (IRF) for the CTA (Cherenkov Telescope Array).
+    A helper class which encapsulates the Instrument Response Function (IRF) for the CTAO (Cherenkov Telescope Array Observatory).
 
     Attributes:
         base_directory (Optional[Path]): The base directory for the IRF files.
@@ -58,7 +58,7 @@ class IRF(BaseModel):
         n_sst (Optional[int]): The number of Single-Size Telescopes (SSTs) in the IRF.
         n_mst (Optional[int]): The number of Medium-Size Telescopes (MSTs) in the IRF.
         n_lst (Optional[int]): The number of Large-Size Telescopes (LSTs) in the IRF.
-        version (Optional[str]): The version of the IRF.
+        version (Optional[Version]): The version of the IRF.
 
     Methods:
         validate_base_directory(cls, base_directory): Validates the base directory path.
@@ -139,7 +139,7 @@ class IRF(BaseModel):
         return data
 
     def __repr__(self):
-        title = "CTA IRF" + (f" [{self.version.value}]" if self.version else "")
+        title = "CTAO IRF" + (f" [{self.version.value}]" if self.version else "")
         filepath = f"    filepath: {self.filepath}"
         config = f"    config: {self.configuration.value} - {self.n_sst} SSTs // {self.n_mst} MSTs // {self.n_lst} LSTs"
         site = f"    site: {self.site} {'(with NSB)' if self.has_nsb else ''}"

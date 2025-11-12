@@ -833,7 +833,7 @@ class Sensitivity:
         source_dec = source_dec * u.deg
 
         if not n_bins:
-            # decide n_bins based on CTA's 5/decade rule
+            # decide n_bins based on CTAO's 5/decade rule
             n_bins = int(np.log10(max_energy / min_energy) * 5)
 
         energy_axis = MapAxis.from_energy_bounds(min_energy, max_energy, nbin=n_bins)

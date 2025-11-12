@@ -1,10 +1,7 @@
-"""Tests for ctairf module."""
-import tempfile
-from pathlib import Path
-
+"""Tests for ctaoirf module."""
 import pytest
 
-from gravitational_wave_toy.ctairf import (
+from gravitational_wave_toy.ctaoirf import (
     Azimuth,
     Configuration,
     Duration,
@@ -137,7 +134,7 @@ def test_irf_repr(tmp_path):
     )
 
     repr_str = repr(irf)
-    assert "CTA IRF" in repr_str
+    assert "CTAO IRF" in repr_str
     assert "prod5-v0.1" in repr_str
     assert "test_irf.fits" in repr_str
     assert "alpha" in repr_str

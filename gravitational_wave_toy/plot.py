@@ -331,9 +331,9 @@ class GWData:
         # Set the title and axis labels.
         sites = self.df["site"].unique()
         if len(sites) > 1:
-            site = "CTA N + S"
+            site = "CTAO N + S"
         else:
-            site = f"CTA {sites[0].capitalize()}"
+            site = f"CTAO {sites[0].capitalize()}"
 
         zeniths = self.df["zeniths"].unique()
         zenith = f"z{zeniths[0]}"
