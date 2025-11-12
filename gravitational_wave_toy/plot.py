@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import dask.dataframe as dd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -28,9 +27,9 @@ class GWData:
 
         # Load the data from the file, using Dask for parallel processing.
         if self._file_type == ".parquet":
-            self._data = dd.read_parquet(self._input_file)
+            self._data = pd.read_parquet(self._input_file)
         elif self._file_type == ".csv":
-            self._data = dd.read_csv(self._input_file, n_partitions=24)
+            self._data = pd.read_csv(self._input_file)
         else:
             raise ValueError("File type not supported, please use .parquet or .csv")
 
@@ -44,12 +43,12 @@ class GWData:
         )
 
     @property
-    def df(self) -> dd.DataFrame:
+    def df(self) -> pd.DataFrame:
         """
         Property to access the current (filtered) data frame.
 
         Returns:
-            data (dd.DataFrame): The current (filtered) data frame.
+            data (pd.DataFrame): The current (filtered) data frame.
         """
         return self._current_data
 
@@ -102,7 +101,7 @@ class GWData:
         return np.logspace(1, np.log10(1 * 3600 + 0.1), 50, dtype=int)
 
     def _calculate_results(self):
-        data = self._current_data.compute()
+        data = self._current_data
 
         # Filter out rows with "obs_time" <= 0
         # Group the data by "start_time" and "obs_time"
@@ -330,13 +329,13 @@ class GWData:
         heatmap.invert_yaxis()
 
         # Set the title and axis labels.
-        sites = self.df["site"].unique().compute()
+        sites = self.df["site"].unique()
         if len(sites) > 1:
             site = "CTA N + S"
         else:
             site = f"CTA {sites[0].capitalize()}"
 
-        zeniths = self.df["zeniths"].unique().compute()
+        zeniths = self.df["zeniths"].unique()
         zenith = f"z{zeniths[0]}"
         if len(zeniths) > 1:
             for z in zeniths[1:]:
@@ -357,7 +356,7 @@ class GWData:
 
         # Set the tick positions and labels for the x and y axes.
         ax.set_xlabel("$t_{0}$", fontsize=16)
-        ax.set_ylabel("$t_{\mathrm{exp}}$", fontsize=16)
+        ax.set_ylabel(r"$t_{\mathrm{exp}}$", fontsize=16)
         ax.set_xticks(x_tick_pos, x_tick_labels, rotation=45, fontsize=12)
         ax.set_yticks(y_tick_pos, y_tick_labels, fontsize=12)
 
