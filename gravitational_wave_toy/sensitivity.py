@@ -304,7 +304,7 @@ class Sensitivity:
         if sensitivity_curve is not None:
             self._sensitivity_curve = sensitivity_curve
             self._sensitivity_unit = sensitivity_curve[0].unit
-            self._sensitivity = scipy.interpolate.interp1d(
+            self._sensitivity: scipy.interpolate.interp1d | None = scipy.interpolate.interp1d(
                 np.log10(self.times.value),
                 np.log10(self._sensitivity_curve.value),
                 kind="linear",
@@ -318,7 +318,7 @@ class Sensitivity:
         if photon_flux_curve is not None:
             self._photon_flux_curve = photon_flux_curve
             self._photon_flux_unit = photon_flux_curve[0].unit
-            self._photon_flux = scipy.interpolate.interp1d(
+            self._photon_flux: scipy.interpolate.interp1d | None = scipy.interpolate.interp1d(
                 np.log10(self.times.value),
                 np.log10(self._photon_flux_curve.value),
                 kind="linear",
