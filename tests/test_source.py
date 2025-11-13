@@ -322,3 +322,66 @@ def test_source_spectra_shape_consistency(mock_csv_path):
 
     assert source.spectra.shape[0] == len(source.energy)
     assert source.spectra.shape[1] == len(source.time)
+
+
+@pytest.mark.slow
+def test_source_observe_with_irf(irf_house, mock_csv_path):
+    """Test source observation functionality with IRF.
+    
+    This test matches the usage pattern from quick-test.ipynb (lines 1-13).
+    """
+    from gravitational_wave_toy.sensitivity import Sensitivity
+
+    # Load in the desired IRF (matching quick-test.ipynb)
+    irf = irf_house.get_irf(
+        site="south",
+        configuration="alpha",
+        zenith=20,
+        duration=1800,
+        azimuth="average",
+        version="prod5-v0.1",
+    )
+
+    # Create a gammapy sensitivity class (matching quick-test.ipynb)
+    min_energy = 30 * u.GeV
+    max_energy = 10 * u.TeV
+
+    sens = Sensitivity(
+        irf=irf,
+        observatory=f"cta_{irf.site.name}",
+        min_energy=min_energy,
+        max_energy=max_energy,
+        radius=3.0 * u.deg,
+    )
+
+    # Load in a GRB and add EBL (matching quick-test.ipynb)
+    grb = Source(mock_csv_path, min_energy=min_energy, max_energy=max_energy, ebl="franceschini")
+
+    # Generate sensitivity curve first (required for observe)
+    sens.get_sensitivity_curve(source=grb)
+
+    # Simulate the observation (matching quick-test.ipynb lines 1-13)
+    delay_time = 30 * u.min
+
+    res = grb.observe(
+        sensitivity=sens,
+        start_time=delay_time,
+        min_energy=min_energy,
+        max_energy=max_energy,
+    )
+
+    # Verify the result dictionary contains expected keys
+    assert "obs_time" in res
+    assert "ebl_model" in res
+
+    # Verify obs_time is a time quantity (can be -1 if not detectable)
+    assert isinstance(res["obs_time"], u.Quantity)
+    assert res["obs_time"].unit.physical_type == "time"
+    # obs_time can be -1 if source is not detectable, or positive if detectable
+    assert res["obs_time"].value >= -1
+
+    # Verify ebl_model is set
+    assert res["ebl_model"] == "franceschini"
+
+    # Verify source seen status
+    assert grb.seen is True or grb.seen is False  # Can be either depending on detectability

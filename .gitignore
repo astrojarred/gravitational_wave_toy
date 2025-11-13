@@ -169,3 +169,6 @@ results/
 plots_*/
 GW*.png
 off-axis-plots/
+
+# test cache
+tests/.cache/

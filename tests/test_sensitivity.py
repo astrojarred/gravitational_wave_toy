@@ -353,3 +353,55 @@ def test_sensitivity_extrapolation():
     # Test extrapolation below min time
     result = sens.get(1.0 * u.s, mode="sensitivity")
     assert isinstance(result, u.Quantity)
+
+
+@pytest.mark.slow
+def test_sensitivity_get_sensitivity_curve(irf_house, mock_csv_path):
+    """Test sensitivity curve generation with IRF and source.
+    
+    This test matches the usage pattern from quick-test.ipynb (lines 1-2).
+    """
+    from gravitational_wave_toy.source import Source
+
+    # Load in the desired IRF (matching quick-test.ipynb)
+    irf = irf_house.get_irf(
+        site="south",
+        configuration="alpha",
+        zenith=20,
+        duration=1800,
+        azimuth="average",
+        version="prod5-v0.1",
+    )
+
+    # Create a gammapy sensitivity class (matching quick-test.ipynb)
+    min_energy = 30 * u.GeV
+    max_energy = 10 * u.TeV
+
+    sens = Sensitivity(
+        irf=irf,
+        observatory=f"cta_{irf.site.name}",
+        min_energy=min_energy,
+        max_energy=max_energy,
+        radius=3.0 * u.deg,
+        n_sensitivity_points=4,
+    )
+
+    # Load in a GRB and add EBL (matching quick-test.ipynb)
+    grb = Source(mock_csv_path, min_energy=min_energy, max_energy=max_energy, ebl="franceschini")
+
+    # Load the sensitivity curve for the GRB (matching quick-test.ipynb line 1-2)
+    sens.get_sensitivity_curve(source=grb)
+
+    # Verify sensitivity_curve is populated
+    assert len(sens.sensitivity_curve) > 0
+    assert sens.sensitivity_curve.unit == u.Unit("erg cm-2 s-1")
+    assert all(sens.sensitivity_curve.value > 0)
+
+    # Verify photon_flux_curve is populated
+    assert len(sens.photon_flux_curve) > 0
+    assert sens.photon_flux_curve.unit == u.Unit("cm-2 s-1")
+    assert all(sens.photon_flux_curve.value > 0)
+
+    # Verify curves have same length as times
+    assert len(sens.sensitivity_curve) == len(sens.times)
+    assert len(sens.photon_flux_curve) == len(sens.times)
