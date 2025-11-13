@@ -434,8 +434,8 @@ class Sensitivity:
             )
             self.times = times
 
-        sensitivity_curve: u.Quantity = u.Quantity([], unit=u.Unit("erg cm-2 s-1"))
-        photon_flux_curve: u.Quantity = u.Quantity([], unit=u.Unit("cm-2 s-1"))
+        sensitivity_curve: list[u.Quantity] = []
+        photon_flux_curve: list[u.Quantity] = []
 
         if not n_bins:
             n_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
