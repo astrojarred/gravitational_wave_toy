@@ -190,3 +190,36 @@ def test_irfhouse_get_irf_invalid_version(tmp_path):
             azimuth=Azimuth.average,
             version="fake",  # type: ignore
         )
+
+
+@pytest.mark.slow
+def test_irfhouse_get_irf_prod5_v0p1(irf_house):
+    """Test IRFHouse.get_irf with prod5-v0.1 IRFs from Zenodo.
+    
+    This test matches the usage pattern from quick-test.ipynb (lines 16-30).
+    """
+    # Test the exact parameters from quick-test.ipynb
+    irf = irf_house.get_irf(
+        site="south",
+        configuration="alpha",
+        zenith=20,
+        duration=1800,
+        azimuth="average",
+        version="prod5-v0.1",
+    )
+    
+    # Verify IRF attributes
+    assert irf.site == Site.south
+    assert irf.configuration == Configuration.alpha
+    assert irf.zenith == Zenith.z20
+    assert irf.duration == 1800
+    assert irf.azimuth == Azimuth.average
+    assert irf.version == Version.prod5_v0p1
+    
+    # Verify IRF filepath exists
+    assert irf.filepath.exists(), f"IRF file does not exist: {irf.filepath}"
+    
+    # Verify telescope configuration for alpha south
+    assert irf.n_lst == 0
+    assert irf.n_mst == 14
+    assert irf.n_sst == 37

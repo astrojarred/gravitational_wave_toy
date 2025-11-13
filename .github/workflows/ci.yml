@@ -32,7 +32,7 @@ jobs:
           uv sync --dev
       - name: Run pytest
         run: |
-          uv run pytest
+          uv run pytest -n auto
       - name: Run mypy
         run: |
           uv run mypy gravitational_wave_toy

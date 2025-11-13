@@ -971,13 +971,13 @@ class Source:
         time: u.Quantity,
         first_energy_bin: u.Quantity,
         mode: Literal["sensitivity", "photon_flux"] = "sensitivity",
-        use_model: bool = True,
+        fit_powerlaw: bool = True,
     ):
         """Calculate the integral flux or energy flux over the energy range.
 
         Integrates the spectrum over the energy range defined by min_energy and max_energy.
-        The spectrum can be represented either as a power-law model (use_model=True) or
-        as a template spectrum (use_model=False). EBL absorption is applied if an EBL
+        The spectrum can be represented either as a power-law model (fit_powerlaw=True) or
+        as a template spectrum (fit_powerlaw=False). EBL absorption is applied if an EBL
         model is set.
 
         Args:
@@ -986,7 +986,7 @@ class Source:
                 in calculation). Must have energy units.
             mode: Integration mode. "photon_flux" returns the integral flux (photons),
                 "sensitivity" returns the energy flux (GeV).
-            use_model: If True, use a power-law model; if False, use the template spectrum.
+            fit_powerlaw: If True, use a power-law model; if False, use the template spectrum.
 
         Returns:
             Integral flux (u.Quantity with units cm⁻² s⁻¹) for photon_flux mode, or
@@ -1011,7 +1011,7 @@ class Source:
         # amount_to_add = 1 if mode == "ctools" else 2
         # spectral_index_plus = spectral_index + amount_to_add
 
-        if use_model:
+        if fit_powerlaw:
             model = self.get_gammapy_spectrum(time)
         else:
             model = self.get_template_spectrum(time)
