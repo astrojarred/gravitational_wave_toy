@@ -1,0 +1,73 @@
+---
+title: Installation
+description: How to install the gravitational wave toy package.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Installation options
+
+Our package is available on PyPI and can be installed using various methods.
+
+<Aside>
+    <p>
+        Python 3.11+ is required to create a new project.
+        Currently, we recommmend using Python 3.12 for the project
+    </p>
+</Aside>
+
+### Installing with `uv` (recommended)
+
+`uv` is a tool for managing Python projects and dependencies. It is a modern alternative to `pip` and `venv`, and is lighter and faster than `conda`. For more information, see the [uv documentation](https://docs.astral.sh/uv/).
+
+#### Adding to an existing `uv` project
+
+```bash
+uv add gravitational-wave-toy
+```
+
+#### Create a new `uv` project
+
+Ininitalize a new project with Python 3.12, then add the gravitational wave toy to the project.
+
+```bash
+uv init -p 3.12
+uv add gravitational-wave-toy
+```
+
+### Installing with `pip`
+
+The gravitational wave toy can be installed into any existing Python environment using pip:
+
+```bash
+pip install gravitational-wave-toy
+```
+
+### Installing with `conda`
+
+The gravitational wave toy can be installed into any existing conda environment using conda.
+
+1. Make sure `pip` is installed in the environment.
+2. Install the gravitational wave toy using pip.
+
+```bash
+conda activate my-environment
+conda install pip
+pip install gravitational-wave-toy
+```
+
+## Testing the installation
+
+To test the installation, you can run the following command:
+
+```bash
+uv run pytest
+```
+
+This will run the test suite and ensure that the installation is working correctly.
+
+In a conda environment or a virtual environment, you can simply run:
+
+```bash
+pytest
+```
