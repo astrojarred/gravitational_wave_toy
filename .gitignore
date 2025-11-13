@@ -8,6 +8,7 @@ gravitational_wave_toy/old/
 notebooks/celery-test/
 CTA_sensitivity/
 20*.fits
+IRFs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

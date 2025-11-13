@@ -7,6 +7,9 @@ from astropy import units as u
 from astropy.io import fits
 from pydantic import BaseModel, field_validator, model_validator
 
+from .logging import logger
+
+log = logger(__name__)
 
 class Site(Enum):
     south = "south"
@@ -357,15 +360,29 @@ class IRFHouse(BaseModel):
 
     def get_irf(
         self,
-        site: Site,
-        configuration: Literal["alpha", "omega"],
-        zenith: Zenith,
-        duration: Duration,
-        azimuth: Azimuth,
-        version: Version,
+        site: Site | str,
+        configuration: Literal["alpha", "omega"] | Configuration,
+        zenith: Zenith | int,
+        duration: Duration | int,
+        azimuth: Azimuth | str,
+        version: Version | str,
         modified: bool = False,
         nsb: bool = False,
     ):
+        # Convert string/int inputs to enums
+        if isinstance(site, str):
+            site = Site(site)
+        if isinstance(configuration, str):
+            configuration = Configuration(configuration)
+        if isinstance(zenith, int):
+            zenith = Zenith(zenith)
+        if isinstance(duration, int):
+            duration = Duration(duration)
+        if isinstance(azimuth, str):
+            azimuth = Azimuth(azimuth)
+        if isinstance(version, str):
+            version = Version(version)
+        
         if version == Version.prod5_v0p1:
             if configuration == Configuration.omega:
                 raise ValueError(f"No omega configuration for {Version.prod5_v0p1}")
@@ -377,8 +394,8 @@ class IRFHouse(BaseModel):
         elif version == Version.prod5_v0p2:
             return self.get_v0p2(
                 site=site,
-                configuration=Configuration(configuration),
-                zenith=zenith,
+                configuration=configuration,
+                zenith=zenith.value,
                 duration=duration,
                 azimuth=azimuth,
                 modified=modified,
@@ -434,15 +451,16 @@ class IRFHouse(BaseModel):
                     modified=modified,
                 )
             except ValueError as e:
-                print(e)
-                print(
+                log.debug(e)
+                log.debug(
                     f"Failed to find IRF for site={site}, configuration={configuration}, zenith={zenith}, duration={duration}, azimuth={azimuth}, version={version}"
                 )
                 missing_irf_count += 1
 
         if missing_irf_count > 0:
-            print(
+            log.info(f"✅ Found {len(sites) * len(configurations) * len(zeniths) * len(durations) * len(azimuths) * len(versions) * len(modifieds) - missing_irf_count} IRFs")
+            log.warning(
                 f"⚠️ Missing {missing_irf_count} IRF{'' if missing_irf_count == 1 else 's'}"
             )
         else:
-            print("✅ All IRFs found")
+            log.info("✅ All IRFs found")
