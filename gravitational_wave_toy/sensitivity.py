@@ -404,7 +404,7 @@ class Sensitivity:
         n_bins: int | None = None,
         starting_amplitude: u.Quantity = 1e-12 * u.Unit("TeV-1 cm-2 s-1"),
         reference: u.Quantity = 1 * u.TeV,
-        use_model: bool = True,
+        fit_powerlaw: bool = True,
         **kwargs,
     ) -> None:
         """Get the sensitivity curve for a given source.
@@ -416,7 +416,7 @@ class Sensitivity:
             n_bins (int | None): The number of bins to use for the sensitivity calculation.
             starting_amplitude (u.Quantity): The starting amplitude to use for the sensitivity calculation.
             reference (u.Quantity): The reference energy to use for the sensitivity calculation.
-            use_model (bool): Whether to use the model to calculate the sensitivity curve.
+            fit_powerlaw (bool): Whether to use the model to calculate the sensitivity curve.
             **kwargs: Additional keyword arguments to pass to the sensitivity calculation.
 
         The sensitivity curve is calculated and stored directly in the _sensitivity_information attribute. In addition the _sensitivity_curve and _photon_flux_curve attributes are updated.
@@ -440,15 +440,15 @@ class Sensitivity:
         if not n_bins:
             n_bins = int(np.log10(self.max_energy / self.min_energy) * 5)
 
-        if source.file_type == "txt" and use_model:
+        if fit_powerlaw:
             # raise a warning that we are using a power law model
             warnings.warn(
-                "Using a power law model for sensitivity calculation. If you don't want to fit a power law, set use_model=False.",
+                "Using a power law model for sensitivity calculation. If you don't want to fit a power law, set fit_powerlaw=False.",
                 UserWarning,
             )
 
         for t in times:
-            if use_model:
+            if fit_powerlaw:
                 s = self.get_sensitivity_from_model(
                     t=t,
                     spectral_model=PowerLawSpectralModel(
