@@ -405,3 +405,73 @@ def test_sensitivity_get_sensitivity_curve(irf_house, mock_csv_path):
     # Verify curves have same length as times
     assert len(sens.sensitivity_curve) == len(sens.times)
     assert len(sens.photon_flux_curve) == len(sens.times)
+
+
+@pytest.mark.slow
+def test_estimate_differential_sensitivity(irf_house):
+    """Test estimate_differential_sensitivity function.
+    
+    This test verifies that the function returns a valid sensitivity table
+    with expected structure and values.
+    """
+    from astropy.table.table import Table
+    from gammapy.modeling.models import PowerLawSpectralModel
+
+    # Load in the desired IRF
+    irf = irf_house.get_irf(
+        site="south",
+        configuration="alpha",
+        zenith=20,
+        duration=1800,
+        azimuth="average",
+        version="prod5-v0.1",
+    )
+
+    # Create a simple power-law spectral model for testing
+    spectral_model = PowerLawSpectralModel(
+        index=2.0,
+        amplitude=1e-12 * u.Unit("cm-2 s-1 TeV-1"),
+        reference=1.0 * u.TeV,
+    )
+
+    # Call estimate_differential_sensitivity
+    sensitivity_table = Sensitivity.estimate_differential_sensitivity(
+        irf=irf.filepath,
+        observatory=f"cta_{irf.site.name}",
+        duration=1800 * u.s,
+        radius=3.0 * u.deg,
+        min_energy=0.03 * u.TeV,
+        max_energy=10.0 * u.TeV,
+        model=spectral_model,
+        source_ra=83.6331,
+        source_dec=22.0145,
+        sigma=5,
+        n_bins=10,
+        offset=0 * u.deg,
+        gamma_min=5,
+        acceptance=1,
+        acceptance_off=5,
+        bkg_syst_fraction=0.05,
+    )
+
+    # Verify the result is a Table
+    assert isinstance(sensitivity_table, Table)
+    assert len(sensitivity_table) > 0
+
+    # Verify the table has columns (typical sensitivity table columns include energy info)
+    assert len(sensitivity_table.colnames) > 0
+
+    # Check for common energy-related columns if they exist
+    if "e_min" in sensitivity_table.colnames:
+        assert all(sensitivity_table["e_min"] > 0)
+        assert sensitivity_table["e_min"].unit.is_equivalent(u.TeV)
+    
+    if "e_max" in sensitivity_table.colnames:
+        assert all(sensitivity_table["e_max"] > 0)
+        assert sensitivity_table["e_max"].unit.is_equivalent(u.TeV)
+        if "e_min" in sensitivity_table.colnames:
+            assert all(sensitivity_table["e_max"] > sensitivity_table["e_min"])
+    
+    if "e_ref" in sensitivity_table.colnames:
+        assert all(sensitivity_table["e_ref"] > 0)
+        assert sensitivity_table["e_ref"].unit.is_equivalent(u.TeV)
