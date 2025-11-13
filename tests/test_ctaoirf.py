@@ -181,7 +181,7 @@ def test_irfhouse_get_irf_invalid_version(tmp_path):
     base_dir.mkdir()
 
     irf_house = IRFHouse(base_directory=str(base_dir), check_irfs=False)
-    with pytest.raises(ValueError, match="Invalid version"):
+    with pytest.raises(ValueError, match="not a valid Version"):
         irf_house.get_irf(
             site=Site.north,
             configuration=Configuration.alpha,
