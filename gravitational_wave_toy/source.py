@@ -141,7 +141,10 @@ class Source:
                 raise ValueError(f"Unsupported file format for {self.filepath}")
 
         if self.input_times is not None:
-            self.time = u.Quantity(self.input_times) * u.s
+            # check for time-compatible units:
+            if not all(isinstance(t, u.Quantity) and t.unit.physical_type == "time" for t in self.input_times):
+                raise ValueError(f"Input times must have time units.")
+            self.time = u.Quantity(self.input_times).to("s")
 
         # set spectral grid
         self.SpectralGrid = None
