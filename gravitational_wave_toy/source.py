@@ -83,6 +83,8 @@ class Source:
         if isinstance(max_energy, u.Quantity):
             max_energy = max_energy.to("GeV")
 
+        self.time = None
+
         self.filepath = Path(filepath).absolute()
         self.min_energy, self.max_energy = min_energy, max_energy
         self.seen: bool | Literal["error"] = False
@@ -142,9 +144,14 @@ class Source:
 
         if self.input_times is not None:
             # check for time-compatible units:
-            if not all(isinstance(t, u.Quantity) and t.unit.physical_type == "time" for t in self.input_times):
-                raise ValueError(f"Input times must have time units.")
+            if not all(
+                isinstance(t, u.Quantity) and t.unit.physical_type == "time"
+                for t in self.input_times
+            ):
+                raise ValueError("Input times must have time units.")
             self.time = u.Quantity(self.input_times).to("s")
+        elif self.time is None:
+            raise ValueError("No input times provided and no time data found in file.")
 
         # set spectral grid
         self.SpectralGrid = None
