@@ -13,7 +13,9 @@ export default defineConfig({
 					label: 'Getting Started',
 					items: [
 						// Each item here is one entry in the navigation menu.
+						{ label: 'Overview', slug: 'getting_started/overview' },
 						{ label: 'Installation', slug: 'getting_started/installation' },
+						{ label: 'Spectral models', slug: 'getting_started/spectral_models' },
 					],
 				},
 				{

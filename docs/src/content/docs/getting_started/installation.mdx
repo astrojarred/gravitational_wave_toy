@@ -11,8 +11,7 @@ Our package is available on PyPI and can be installed using various methods.
 
 <Aside>
     <p>
-        Python 3.11+ is required to create a new project.
-        Currently, we recommmend using Python 3.12 for the project
+        Python 3.11+ is required for installation.
     </p>
 </Aside>
 
@@ -28,11 +27,19 @@ uv add gravitational-wave-toy
 
 #### Create a new `uv` project
 
-Ininitalize a new project with Python 3.12, then add the gravitational wave toy to the project.
+Ininitalize a new project with Python 3.12 (for example), then add the gravitational wave toy to the project.
 
 ```bash
 uv init -p 3.12
 uv add gravitational-wave-toy
+```
+
+#### Updating the package with `uv`
+
+Update the package to the latest version:
+
+```bash
+uv add -U gravitational-wave-toy
 ```
 
 ### Installing with `pip`
