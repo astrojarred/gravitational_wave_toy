@@ -76,6 +76,7 @@ class Source:
         min_energy: u.Quantity | None = None,
         max_energy: u.Quantity | None = None,
         ebl: str | None = None,
+        times: list[u.Quantity] | None = None,
     ) -> None:
         if isinstance(min_energy, u.Quantity):
             min_energy = min_energy.to("GeV")
@@ -92,6 +93,10 @@ class Source:
         self.dist = None
         self.file_type: Literal["fits", "txt", "csv", None] = None
         self.id = 0
+
+        self.input_times: list[u.Quantity] | None = None
+        if times is not None:
+            self.input_times = times
 
         # initialize metadata
         self.eiso = None
@@ -134,6 +139,9 @@ class Source:
                 self.read_txt()
             else:
                 raise ValueError(f"Unsupported file format for {self.filepath}")
+
+        if self.input_times is not None:
+            self.time = u.Quantity(self.input_times) * u.s
 
         # set spectral grid
         self.SpectralGrid = None
@@ -269,7 +277,6 @@ class Source:
         candidates.sort(key=extract_index)
 
         spectra_columns = []  # list of flux arrays per time
-        time_indices = []
 
         for p in candidates:
             arr = np.loadtxt(p)
@@ -277,13 +284,9 @@ class Source:
             dNdE = arr[:, 1] * u.Unit("1 / (cm2 s GeV)")
 
             spectra_columns.append(dNdE)
-            time_indices.append(extract_index(p))
 
         # set energy grid
         self.energy = energy
-
-        # Create time array from indices (assuming indices represent time steps)
-        self.time = u.Quantity(time_indices) * u.s
 
         # build spectra with shape (n_energy, n_time)
         spectra_stack = u.Quantity(spectra_columns)  # (n_time, n_energy)
@@ -515,8 +518,16 @@ class Source:
                             u.UnitConversionError,
                         ) as field_exc:
                             # Convert bytes to strings for safe formatting
-                            value_str = value.decode('utf-8') if isinstance(value, bytes) else str(value)
-                            unit_str = unit.decode('utf-8') if isinstance(unit, bytes) else str(unit)
+                            value_str = (
+                                value.decode("utf-8")
+                                if isinstance(value, bytes)
+                                else str(value)
+                            )
+                            unit_str = (
+                                unit.decode("utf-8")
+                                if isinstance(unit, bytes)
+                                else str(unit)
+                            )
                             log.warning(
                                 f"Could not parse metadata field '{metadata_key}' (value={value_str}, unit={unit_str}) in {metadata_path}: {type(field_exc).__name__} {field_exc}. Using default value for '{attr_name}'."
                             )
