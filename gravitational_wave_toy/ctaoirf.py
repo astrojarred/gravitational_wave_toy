@@ -19,6 +19,7 @@ class Site(Enum):
 class Configuration(Enum):
     alpha = "alpha"
     omega = "omega"
+    alpha_lst = "alpha_lst"
 
 
 class Azimuth(Enum):
@@ -205,6 +206,7 @@ class IRFHouse(BaseModel):
     # ALPHA SOUTH           =         14 MST  37 SST
     # ALPHA SOUTH MODIFIED  =  4 LST  14 MST  40 SST
     # ALPHA NORTH           =  4 LST   9 MST
+    # ALPHA NORTH LST       =  4 LST
     # OMEGA SOUTH           =  4 LST  25 MST  70 SST
     # OMEGA NORTH           =  4 LST  15 MST
 
@@ -214,10 +216,18 @@ class IRFHouse(BaseModel):
         zenith: Zenith,
         duration: Duration,
         azimuth: Azimuth = Azimuth.average,
+        configuration: Configuration = Configuration.alpha,
     ):
         site_string = site.value.capitalize()
+        subarray_string = ""
         azimuth_string = f"{azimuth.value.capitalize()}Az"
-        if site.value == "north":
+        if configuration == Configuration.alpha_lst:
+            n_lst = 4
+            n_mst = 0
+            n_sst = 0
+            telescope_string = "4LSTs"
+            subarray_string = "-LSTSubArray"
+        elif site.value == "north":
             n_lst = 4
             n_mst = 9
             n_sst = 0
@@ -233,9 +243,9 @@ class IRFHouse(BaseModel):
         return IRF(
             base_directory=self.base_directory,
             filepath=Path(
-                f"prod5-v0.1/fits/CTA-Performance-prod5-v0.1-{site_string}-{zenith}deg.FITS/Prod5-{site_string}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.1.fits.gz"
+                f"prod5-v0.1/fits/CTA-Performance-prod5-v0.1-{site_string}{subarray_string}-{zenith}deg.FITS/Prod5-{site_string}-{zenith}deg-{azimuth_string}-{telescope_string}.{duration}s-v0.1.fits.gz"
             ),
-            configuration=Configuration.alpha,
+            configuration=configuration,
             site=site,
             zenith=zenith,
             duration=duration,
@@ -361,7 +371,7 @@ class IRFHouse(BaseModel):
     def get_irf(
         self,
         site: Site | str,
-        configuration: Literal["alpha", "omega"] | Configuration,
+        configuration: Configuration | str,
         zenith: Zenith | int,
         duration: Duration | int,
         azimuth: Azimuth | str,
@@ -388,7 +398,7 @@ class IRFHouse(BaseModel):
                 raise ValueError(f"No omega configuration for {Version.prod5_v0p1}")
 
             return self.get_alpha_v0p1(
-                site=site, zenith=zenith, duration=duration, azimuth=azimuth
+                site=site, zenith=zenith, duration=duration, azimuth=azimuth, configuration=configuration,
             )
 
         elif version == Version.prod5_v0p2:
